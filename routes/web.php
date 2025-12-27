@@ -80,4 +80,12 @@ Route::middleware('auth')->group(function () {
         Route::put('/{ruangan}', [RuanganController::class, 'update'])->name('update')->middleware('permission:ruangan.edit');
         Route::delete('/{ruangan}', [RuanganController::class, 'destroy'])->name('destroy')->middleware('permission:ruangan.delete');
     });
+
+    // Master Data - Mata Kuliah
+    Route::prefix('mata-kuliah')->name('mata-kuliah.')->middleware('permission:matakuliah.view')->group(function () {
+        Route::get('/', [\App\Http\Controllers\MataKuliahController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\MataKuliahController::class, 'store'])->name('store')->middleware('permission:matakuliah.create');
+        Route::put('/{mataKuliah}', [\App\Http\Controllers\MataKuliahController::class, 'update'])->name('update')->middleware('permission:matakuliah.edit');
+        Route::delete('/{mataKuliah}', [\App\Http\Controllers\MataKuliahController::class, 'destroy'])->name('destroy')->middleware('permission:matakuliah.delete');
+    });
 });
