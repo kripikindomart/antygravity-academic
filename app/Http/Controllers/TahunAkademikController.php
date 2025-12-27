@@ -58,51 +58,41 @@ class TahunAkademikController extends Controller
         $validated = $request->validate([
             'kode' => ['required', 'string', 'max:20', 'unique:tahun_akademiks,kode'],
             'nama' => ['required', 'string', 'max:255'],
-            'ganjil_mulai' => ['required', 'date'],
-            'ganjil_selesai' => ['required', 'date', 'after:ganjil_mulai'],
-            'genap_mulai' => ['required', 'date', 'after:ganjil_selesai'],
-            'genap_selesai' => ['required', 'date', 'after:genap_mulai'],
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after:tanggal_mulai'],
             'is_active' => ['boolean'],
         ]);
 
-        // If setting as active, deactivate others
         if ($validated['is_active'] ?? false) {
             TahunAkademik::where('is_active', true)->update(['is_active' => false]);
         }
 
-        // Initialize transaction
-        \DB::transaction(function () use ($validated) {
-            // Create Tahun Akademik (Start = Ganjil Start, End = Genap End)
-            $tahunAkademik = TahunAkademik::create([
-                'kode' => $validated['kode'],
-                'nama' => $validated['nama'],
-                'tanggal_mulai' => $validated['ganjil_mulai'],
-                'tanggal_selesai' => $validated['genap_selesai'],
-                'is_active' => $validated['is_active'] ?? false,
-            ]);
+        $tahunAkademik = TahunAkademik::create($validated);
 
-            $tahunMulai = Carbon::parse($validated['ganjil_mulai'])->year;
+        // Auto create semesters (Ganjil & Genap)
+        $tahunMulai = Carbon::parse($validated['tanggal_mulai'])->year;
 
-            // Create Semester Ganjil
-            Semester::create([
-                'tahun_akademik_id' => $tahunAkademik->id,
-                'kode' => "{$tahunMulai}1",
-                'nama' => 'Ganjil',
-                'tipe' => 'ganjil',
-                'tanggal_mulai' => $validated['ganjil_mulai'],
-                'tanggal_selesai' => $validated['ganjil_selesai'],
-            ]);
+        // Ganjil: Start of TA -> +6 months (approx) or end of year
+        // Genap: Start of next year -> End of TA
+        // Let's use simple logic: Ganjil = Start Date, Genap = Start Date + 6 months
 
-            // Create Semester Genap
-            Semester::create([
-                'tahun_akademik_id' => $tahunAkademik->id,
-                'kode' => "{$tahunMulai}2",
-                'nama' => 'Genap',
-                'tipe' => 'genap',
-                'tanggal_mulai' => $validated['genap_mulai'],
-                'tanggal_selesai' => $validated['genap_selesai'],
-            ]);
-        });
+        Semester::create([
+            'tahun_akademik_id' => $tahunAkademik->id,
+            'kode' => "{$tahunMulai}1",
+            'nama' => 'Ganjil',
+            'tipe' => 'ganjil',
+            'tanggal_mulai' => Carbon::parse($validated['tanggal_mulai']),
+            'tanggal_selesai' => Carbon::parse($validated['tanggal_mulai'])->addMonths(6)->subDay(),
+        ]);
+
+        Semester::create([
+            'tahun_akademik_id' => $tahunAkademik->id,
+            'kode' => "{$tahunMulai}2",
+            'nama' => 'Genap',
+            'tipe' => 'genap',
+            'tanggal_mulai' => Carbon::parse($validated['tanggal_mulai'])->addMonths(6),
+            'tanggal_selesai' => Carbon::parse($validated['tanggal_selesai']),
+        ]);
 
         return redirect()->route('tahun-akademik.index')
             ->with('success', 'Tahun Akademik berhasil ditambahkan.');
@@ -116,10 +106,8 @@ class TahunAkademikController extends Controller
         $validated = $request->validate([
             'kode' => ['required', 'string', 'max:20', "unique:tahun_akademiks,kode,{$tahunAkademik->id}"],
             'nama' => ['required', 'string', 'max:255'],
-            'ganjil_mulai' => ['required', 'date'],
-            'ganjil_selesai' => ['required', 'date', 'after:ganjil_mulai'],
-            'genap_mulai' => ['required', 'date', 'after:ganjil_selesai'],
-            'genap_selesai' => ['required', 'date', 'after:genap_mulai'],
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after:tanggal_mulai'],
             'is_active' => ['boolean'],
         ]);
 
@@ -127,27 +115,7 @@ class TahunAkademikController extends Controller
             TahunAkademik::where('is_active', true)->update(['is_active' => false]);
         }
 
-        \DB::transaction(function () use ($validated, $tahunAkademik) {
-            $tahunAkademik->update([
-                'kode' => $validated['kode'],
-                'nama' => $validated['nama'],
-                'tanggal_mulai' => $validated['ganjil_mulai'],
-                'tanggal_selesai' => $validated['genap_selesai'],
-                'is_active' => $validated['is_active'] ?? false,
-            ]);
-
-            // Update Semesters
-            // Assuming Semesters already exist correctly ordered or by type
-            $tahunAkademik->semesters()->where('tipe', 'ganjil')->update([
-                'tanggal_mulai' => $validated['ganjil_mulai'],
-                'tanggal_selesai' => $validated['ganjil_selesai'],
-            ]);
-
-            $tahunAkademik->semesters()->where('tipe', 'genap')->update([
-                'tanggal_mulai' => $validated['genap_mulai'],
-                'tanggal_selesai' => $validated['genap_selesai'],
-            ]);
-        });
+        $tahunAkademik->update($validated);
 
         return redirect()->route('tahun-akademik.index')
             ->with('success', 'Tahun Akademik berhasil diperbarui.');
@@ -158,19 +126,7 @@ class TahunAkademikController extends Controller
      */
     public function destroy(TahunAkademik $tahunAkademik)
     {
-        if ($tahunAkademik->semesters()->count() > 0) {
-            // Allow force delete or cascade? 
-            // Since semesters are child of TA, they should cascade implicitly in logic or explicitly here.
-            // But usually we don't want to delete TA if used.
-            // However, since we auto-created them, we should allow deleting them ALL if it's clean.
-            // For now, let's allow delete if NO registered classes/schedule (which we don't check yet).
-            // But migration has cascadeOnDelete.
-            $tahunAkademik->delete();
-            return redirect()->route('tahun-akademik.index')->with('success', 'Tahun Akademik berhasil dihapus.');
-        }
-
         $tahunAkademik->delete();
-
         return redirect()->route('tahun-akademik.index')
             ->with('success', 'Tahun Akademik berhasil dihapus.');
     }
