@@ -41,10 +41,15 @@ class Kurikulum extends Model
         return $this->hasMany(Cpl::class)->orderBy('urutan');
     }
 
+    public function profilLulusans()
+    {
+        return $this->hasMany(ProfilLulusan::class);
+    }
+
     public function mataKuliahs()
     {
         return $this->belongsToMany(MataKuliah::class, 'kurikulum_mata_kuliah')
-            ->withPivot('semester_rekomendasi')
+            ->withPivot('semester')
             ->withTimestamps();
     }
 

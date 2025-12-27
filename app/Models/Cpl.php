@@ -36,6 +36,13 @@ class Cpl extends Model
     /**
      * CPMK - Capaian Pembelajaran Mata Kuliah
      */
+    public function profilLulusans()
+    {
+        return $this->belongsToMany(ProfilLulusan::class, 'cpl_profil_lulusan')
+            ->withPivot('skor')
+            ->withTimestamps();
+    }
+
     public function cpmks(): HasMany
     {
         return $this->hasMany(Cpmk::class)->orderBy('urutan');

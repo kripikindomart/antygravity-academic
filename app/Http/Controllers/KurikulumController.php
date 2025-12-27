@@ -108,11 +108,45 @@ class KurikulumController extends Controller
      */
     public function show(Kurikulum $kurikulum)
     {
-        $kurikulum->load(['prodi', 'cpls.cpmks.mataKuliah', 'cpls.cpmks.subCpmks', 'mataKuliahs']);
+        $kurikulum->load(['prodi', 'cpls.cpmks.mataKuliah', 'cpls.cpmks.subCpmks', 'mataKuliahs', 'profilLulusans.cpls']); // withPivot semester handled in model relation?
 
         return Inertia::render('Kurikulum/Show', [
             'kurikulum' => $kurikulum,
+            'prodis' => ProgramStudi::select('id', 'nama', 'jenjang')->orderBy('jenjang')->orderBy('nama')->get(),
+            'cplMkMapping' => \Illuminate\Support\Facades\DB::table('cpl_mata_kuliah')
+                ->where('kurikulum_id', $kurikulum->id)
+                ->get(['cpl_id', 'mata_kuliah_id'])
+                ->map(fn($item) => $item->cpl_id . '-' . $item->mata_kuliah_id)
+                ->values()
+                ->toArray(),
         ]);
+    }
+
+    public function toggleCplMk(Request $request, Kurikulum $kurikulum)
+    {
+        $request->validate([
+            'cpl_id' => 'required|exists:cpls,id',
+            'mata_kuliah_id' => 'required|exists:mata_kuliahs,id',
+            'attached' => 'required|boolean'
+        ]);
+
+        if ($request->attached) {
+            \Illuminate\Support\Facades\DB::table('cpl_mata_kuliah')->insertOrIgnore([
+                'kurikulum_id' => $kurikulum->id,
+                'cpl_id' => $request->cpl_id,
+                'mata_kuliah_id' => $request->mata_kuliah_id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } else {
+            \Illuminate\Support\Facades\DB::table('cpl_mata_kuliah')
+                ->where('kurikulum_id', $kurikulum->id)
+                ->where('cpl_id', $request->cpl_id)
+                ->where('mata_kuliah_id', $request->mata_kuliah_id)
+                ->delete();
+        }
+
+        return back();
     }
 
     /**
@@ -127,7 +161,14 @@ class KurikulumController extends Controller
             'urutan' => ['integer', 'min:0'],
         ]);
 
-        $kurikulum->cpls()->create($validated);
+        $cpl = $kurikulum->cpls()->create($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => 'CPL berhasil ditambahkan.',
+                'cpl' => $cpl
+            ]);
+        }
 
         return back()->with('success', 'CPL berhasil ditambahkan.');
     }
@@ -146,15 +187,28 @@ class KurikulumController extends Controller
 
         $cpl->update($validated);
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => 'CPL berhasil diperbarui.',
+                'cpl' => $cpl
+            ]);
+        }
+
         return back()->with('success', 'CPL berhasil diperbarui.');
     }
 
     /**
      * Delete CPL
      */
-    public function destroyCpl(Cpl $cpl)
+    public function destroyCpl(Request $request, Cpl $cpl)
     {
         $cpl->delete();
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => 'CPL berhasil dihapus.'
+            ]);
+        }
 
         return back()->with('success', 'CPL berhasil dihapus.');
     }
@@ -162,11 +216,12 @@ class KurikulumController extends Controller
     /**
      * Get all MK for prodi (for assignment modal)
      */
-    public function getAvailableMk(Kurikulum $kurikulum)
+    public function getAvailableMk(Request $request, Kurikulum $kurikulum)
     {
         $assignedMkIds = $kurikulum->mataKuliahs()->pluck('mata_kuliah_id');
+        $prodiId = $request->input('prodi_id', $kurikulum->prodi_id);
 
-        $availableMk = \App\Models\MataKuliah::where('prodi_id', $kurikulum->prodi_id)
+        $availableMk = \App\Models\MataKuliah::where('prodi_id', $prodiId)
             ->whereNotIn('id', $assignedMkIds)
             ->orderBy('semester')
             ->orderBy('nama')
@@ -183,16 +238,17 @@ class KurikulumController extends Controller
         $validated = $request->validate([
             'mata_kuliah_ids' => ['required', 'array'],
             'mata_kuliah_ids.*' => ['exists:mata_kuliahs,id'],
+            'semester' => ['required', 'integer', 'min:1', 'max:8'],
         ]);
 
         foreach ($validated['mata_kuliah_ids'] as $mkId) {
-            $mk = \App\Models\MataKuliah::find($mkId);
-            $kurikulum->mataKuliahs()->attach($mkId, [
-                'semester_rekomendasi' => $mk->semester,
-            ]);
+            // Attach if not exists, using specific semester
+            if (!$kurikulum->mataKuliahs()->where('mata_kuliah_id', $mkId)->exists()) {
+                $kurikulum->mataKuliahs()->attach($mkId, ['semester' => $validated['semester']]);
+            }
         }
 
-        return back()->with('success', count($validated['mata_kuliah_ids']) . ' Mata Kuliah berhasil ditambahkan.');
+        return redirect()->back()->with('success', count($validated['mata_kuliah_ids']) . ' Mata Kuliah ditambahkan ke Semester ' . $validated['semester']);
     }
 
     /**
@@ -203,6 +259,18 @@ class KurikulumController extends Controller
         $kurikulum->mataKuliahs()->detach($mkId);
 
         return back()->with('success', 'Mata Kuliah berhasil dihapus dari kurikulum.');
+    }
+
+    public function removeMkBulk(Request $request, Kurikulum $kurikulum)
+    {
+        $validated = $request->validate([
+            'mata_kuliah_ids' => ['required', 'array'],
+            'mata_kuliah_ids.*' => ['exists:mata_kuliahs,id'],
+        ]);
+
+        $kurikulum->mataKuliahs()->detach($validated['mata_kuliah_ids']);
+
+        return back()->with('success', count($validated['mata_kuliah_ids']) . ' Mata Kuliah berhasil dihapus dari kurikulum.');
     }
 
     /**

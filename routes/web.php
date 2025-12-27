@@ -123,6 +123,25 @@ Route::middleware('auth')->group(function () {
         Route::get('/{kurikulum}/available-mk', [\App\Http\Controllers\KurikulumController::class, 'getAvailableMk'])->name('mk.available');
         Route::post('/{kurikulum}/assign-mk', [\App\Http\Controllers\KurikulumController::class, 'assignMk'])->name('mk.assign')->middleware('permission:kurikulum.edit');
         Route::delete('/{kurikulum}/remove-mk/{mk}', [\App\Http\Controllers\KurikulumController::class, 'removeMk'])->name('mk.remove')->middleware('permission:kurikulum.edit');
+        Route::post('/{kurikulum}/remove-mk-bulk', [\App\Http\Controllers\KurikulumController::class, 'removeMkBulk'])->name('mk.remove-bulk')->middleware('permission:kurikulum.delete');
+
+        // CPMK Management
+        Route::get('/{kurikulum}/mk/{mataKuliah}/cpmk', [\App\Http\Controllers\CpmkController::class, 'getByKurikulumMataKuliah'])->name('cpmk.by-mk');
+        Route::post('/cpmk', [\App\Http\Controllers\CpmkController::class, 'store'])->name('cpmk.store')->middleware('permission:kurikulum.edit');
+        Route::put('/cpmk/{cpmk}', [\App\Http\Controllers\CpmkController::class, 'update'])->name('cpmk.update')->middleware('permission:kurikulum.edit');
+        Route::delete('/cpmk/{cpmk}', [\App\Http\Controllers\CpmkController::class, 'destroy'])->name('cpmk.destroy')->middleware('permission:kurikulum.delete');
+
+        // CPL-MK Mapping
+        Route::post('/{kurikulum}/toggle-cpl-mk', [\App\Http\Controllers\KurikulumController::class, 'toggleCplMk'])->name('cpl-mk.toggle')->middleware('permission:kurikulum.edit');
+
+        // CPL-MK Mapping
+        Route::post('/{kurikulum}/toggle-cpl-mk', [\App\Http\Controllers\KurikulumController::class, 'toggleCplMk'])->name('cpl-mk.toggle')->middleware('permission:kurikulum.edit');
+
+        // Profil Lulusan
+        Route::post('/{kurikulum}/pl', [\App\Http\Controllers\ProfilLulusanController::class, 'store'])->name('pl.store')->middleware('permission:kurikulum.edit');
+        Route::put('/pl/{profilLulusan}', [\App\Http\Controllers\ProfilLulusanController::class, 'update'])->name('pl.update')->middleware('permission:kurikulum.edit');
+        Route::delete('/pl/{profilLulusan}', [\App\Http\Controllers\ProfilLulusanController::class, 'destroy'])->name('pl.destroy')->middleware('permission:kurikulum.delete');
+        Route::post('/pl/{profilLulusan}/mapping', [\App\Http\Controllers\ProfilLulusanController::class, 'updateMapping'])->name('pl.mapping')->middleware('permission:kurikulum.edit');
 
         // Duplicate Kurikulum
         Route::post('/{kurikulum}/duplicate', [\App\Http\Controllers\KurikulumController::class, 'duplicate'])->name('duplicate')->middleware('permission:kurikulum.create');
