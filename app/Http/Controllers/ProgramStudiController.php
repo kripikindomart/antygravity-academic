@@ -13,7 +13,8 @@ class ProgramStudiController extends Controller
      */
     public function index(Request $request)
     {
-        $query = ProgramStudi::query();
+        $query = ProgramStudi::query()
+            ->with(['kaprodi.dosen', 'sekprodi.dosen']);
 
         if ($request->search) {
             $query->where(function ($q) use ($request) {
@@ -46,7 +47,6 @@ class ProgramStudiController extends Controller
             'nama' => ['required', 'string', 'max:255'],
             'jenjang' => ['required', 'in:S1,S2,S3'],
             'akreditasi' => ['nullable', 'string', 'max:50'],
-            'kaprodi' => ['nullable', 'string', 'max:255'],
             'is_active' => ['boolean'],
         ]);
 
@@ -66,7 +66,6 @@ class ProgramStudiController extends Controller
             'nama' => ['required', 'string', 'max:255'],
             'jenjang' => ['required', 'in:S1,S2,S3'],
             'akreditasi' => ['nullable', 'string', 'max:50'],
-            'kaprodi' => ['nullable', 'string', 'max:255'],
             'is_active' => ['boolean'],
         ]);
 

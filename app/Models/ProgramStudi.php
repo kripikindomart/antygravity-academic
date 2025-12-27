@@ -14,7 +14,6 @@ class ProgramStudi extends Model
         'nama',
         'jenjang',
         'akreditasi',
-        'kaprodi',
         'is_active',
     ];
 
@@ -36,6 +35,34 @@ class ProgramStudi extends Model
     public function mahasiswas()
     {
         return $this->hasMany(Mahasiswa::class);
+    }
+
+    /**
+     * Get jabatan struktural for this program studi.
+     */
+    public function jabatanStruktural()
+    {
+        return $this->hasMany(JabatanStruktural::class);
+    }
+
+    /**
+     * Get active kaprodi.
+     */
+    public function kaprodi()
+    {
+        return $this->hasOne(JabatanStruktural::class)
+            ->where('jabatan', 'kaprodi')
+            ->where('is_active', true);
+    }
+
+    /**
+     * Get active sekprodi.
+     */
+    public function sekprodi()
+    {
+        return $this->hasOne(JabatanStruktural::class)
+            ->where('jabatan', 'sekprodi')
+            ->where('is_active', true);
     }
 
     /**

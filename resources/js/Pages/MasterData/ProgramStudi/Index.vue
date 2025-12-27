@@ -68,7 +68,10 @@
                                     <span :class="['px-2.5 py-1 text-xs font-semibold rounded-full', getJenjangClass(prodi.jenjang)]">{{ prodi.jenjang }}</span>
                                 </td>
                                 <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ prodi.akreditasi || '-' }}</td>
-                                <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ prodi.kaprodi || '-' }}</td>
+                                <td class="px-6 py-4 text-gray-600 dark:text-gray-400">
+                                    <span v-if="prodi.kaprodi?.dosen">{{ prodi.kaprodi.dosen.nama }}</span>
+                                    <span v-else class="text-gray-400 italic">Belum diset</span>
+                                </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-end gap-1">
                                         <button @click="openModal(prodi)" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="Edit">
@@ -111,7 +114,10 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
                                         </svg>
                                     </div>
-                                    <h2 class="text-xl font-bold text-white">{{ editingItem ? 'Edit' : 'Tambah' }} Program Studi</h2>
+                                    <div>
+                                        <h2 class="text-xl font-bold text-white">{{ editingItem ? 'Edit' : 'Tambah' }} Program Studi</h2>
+                                        <p class="text-white/70 text-sm">Kaprodi/Sekprodi diatur terpisah</p>
+                                    </div>
                                 </div>
                                 <button @click="showModal = false" class="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg">
                                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -138,15 +144,9 @@
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Nama <span class="text-red-500">*</span></label>
                                 <input v-model="form.nama" type="text" required placeholder="Magister Manajemen" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Akreditasi</label>
-                                    <input v-model="form.akreditasi" type="text" placeholder="A / Unggul" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Kaprodi</label>
-                                    <input v-model="form.kaprodi" type="text" placeholder="Dr. Ahmad" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
-                                </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Akreditasi</label>
+                                <input v-model="form.akreditasi" type="text" placeholder="A / Unggul" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
                             </div>
                             <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
                                 <button type="button" @click="showModal = false" class="px-6 py-2.5 text-gray-700 font-medium rounded-xl hover:bg-gray-100">Batal</button>
@@ -208,7 +208,6 @@ const form = useForm({
     nama: '',
     jenjang: 'S2',
     akreditasi: '',
-    kaprodi: '',
     is_active: true,
 });
 
@@ -244,7 +243,6 @@ const openModal = (item = null) => {
         form.nama = item.nama;
         form.jenjang = item.jenjang;
         form.akreditasi = item.akreditasi || '';
-        form.kaprodi = item.kaprodi || '';
     } else {
         form.reset();
         form.jenjang = 'S2';
