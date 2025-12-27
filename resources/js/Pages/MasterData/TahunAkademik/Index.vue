@@ -164,11 +164,11 @@
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Mulai <span class="text-red-500">*</span></label>
-                                    <input v-model="form.tanggal_mulai" type="date" required class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                                    <DatePicker v-model="form.tanggal_mulai" placeholder="Pilih tanggal mulai..." />
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Selesai <span class="text-red-500">*</span></label>
-                                    <input v-model="form.tanggal_selesai" type="date" required class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                                    <DatePicker v-model="form.tanggal_selesai" placeholder="Pilih tanggal selesai..." :min-date="form.tanggal_mulai" />
                                 </div>
                             </div>
 
@@ -221,6 +221,7 @@
 import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import DatePicker from '@/Components/UI/DatePicker.vue';
 
 const props = defineProps({
     tahunAkademiks: Object,
