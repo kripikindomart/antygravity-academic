@@ -1,43 +1,41 @@
 <template>
-    <div class="relative">
+    <div class="datepicker-wrapper">
         <VueDatePicker
             v-model="localValue"
-            :locale="'id'"
+            locale="id"
             :enable-time-picker="false"
-            :format="'dd MMMM yyyy'"
-            :preview-format="'dd MMMM yyyy'"
-            :auto-apply="true"
-            :close-on-auto-apply="true"
+            format="dd MMMM yyyy"
+            preview-format="dd MMMM yyyy"
+            auto-apply
             :clearable="clearable"
             :disabled="disabled"
             :placeholder="placeholder"
             :min-date="parsedMinDate"
             :max-date="maxDate"
             :dark="isDark"
-            :teleport="true"
-            :month-name-format="'long'"
+            teleport-center
+            month-name-format="long"
             :week-start="1"
-            text-input
             hide-input-icon
             @update:model-value="handleChange"
         >
-            <template #dp-input="{ value, onInput, onEnter, onTab, onClear, onBlur, onKeypress, onPaste }">
+            <template #dp-input="{ value, onInput, onEnter, onTab, onClear, onBlur, onKeypress, onPaste, isMenuOpen }">
                 <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
                         <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                         </svg>
                     </div>
                     <input
                         type="text"
-                        :value="value"
+                        :value="value || ''"
                         :placeholder="placeholder"
                         readonly
-                        class="w-full px-4 py-3 pl-12 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-0 focus:border-primary-500 focus:outline-none transition-colors cursor-pointer"
+                        class="w-full px-4 py-3 pl-12 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-0 focus:border-primary-500 focus:outline-none transition-colors cursor-pointer text-sm"
                         @blur="onBlur"
                     />
-                    <div v-if="value && clearable" class="absolute inset-y-0 right-0 pr-4 flex items-center">
-                        <button type="button" @click.stop="onClear" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <div v-if="value && clearable" class="absolute inset-y-0 right-0 pr-4 flex items-center z-10">
+                        <button type="button" @click.stop="handleClear(onClear)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -79,7 +77,6 @@ const parsedMinDate = computed(() => {
     return new Date(props.minDate);
 });
 
-// Parse incoming value
 const parseValue = (val) => {
     if (!val) return null;
     if (val instanceof Date) return val;
@@ -87,7 +84,6 @@ const parseValue = (val) => {
     return isNaN(date.getTime()) ? null : date;
 };
 
-// Format for output (ISO string for backend)
 const formatForBackend = (date) => {
     if (!date) return null;
     const d = new Date(date);
@@ -101,6 +97,11 @@ const handleChange = (val) => {
     emit('update:modelValue', formatForBackend(val));
 };
 
+const handleClear = (onClear) => {
+    if (onClear) onClear();
+    emit('update:modelValue', null);
+};
+
 watch(() => props.modelValue, (newVal) => {
     localValue.value = parseValue(newVal);
 }, { immediate: true });
@@ -111,7 +112,19 @@ onMounted(() => {
 </script>
 
 <style>
-/* Custom styles for VueDatePicker */
+/* Make sure datepicker popup has high z-index */
+.dp__menu {
+    z-index: 99999 !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4) !important;
+    border-radius: 16px !important;
+    min-width: 280px !important;
+}
+
+.dp__outer_menu_wrap {
+    z-index: 99999 !important;
+}
+
+/* Custom theme variables */
 :root {
     --dp-font-family: 'Inter', system-ui, sans-serif;
     --dp-border-radius: 16px;
@@ -142,14 +155,10 @@ onMounted(() => {
     --dp-icon-color: #6b7280;
 }
 
-.dp__menu {
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
-    border-radius: 16px !important;
-}
-
 .dp__calendar_header_item {
     font-weight: 600 !important;
     color: #6b7280 !important;
+    font-size: 0.75rem !important;
 }
 
 .dp__today {
@@ -167,5 +176,13 @@ onMounted(() => {
 
 .dp__month_year_select:hover {
     color: #0284c7 !important;
+}
+
+.dp__cell_inner {
+    border-radius: 8px !important;
+}
+
+.dp__action_row {
+    padding: 12px 16px !important;
 }
 </style>
