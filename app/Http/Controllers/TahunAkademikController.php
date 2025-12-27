@@ -6,6 +6,7 @@ use App\Models\TahunAkademik;
 use App\Models\Semester;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class TahunAkademikController extends Controller
 {
@@ -17,7 +18,10 @@ class TahunAkademikController extends Controller
         $query = TahunAkademik::query()->withCount('semesters');
 
         if ($request->search) {
-            $query->where('nama', 'like', "%{$request->search}%");
+            $query->where(function ($q) use ($request) {
+                $q->where('nama', 'like', "%{$request->search}%")
+                    ->orWhere('kode', 'like', "%{$request->search}%");
+            });
         }
 
         if ($request->status === 'active') {
@@ -26,7 +30,7 @@ class TahunAkademikController extends Controller
             $query->where('is_active', false);
         }
 
-        $tahunAkademiks = $query->orderByDesc('tahun_mulai')
+        $tahunAkademiks = $query->orderByDesc('tanggal_mulai')
             ->paginate(10)
             ->withQueryString();
 
@@ -46,9 +50,10 @@ class TahunAkademikController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'kode' => ['required', 'string', 'max:20', 'unique:tahun_akademiks,kode'],
             'nama' => ['required', 'string', 'max:255'],
-            'tahun_mulai' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'tahun_selesai' => ['required', 'integer', 'min:2000', 'max:2100', 'gt:tahun_mulai'],
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after:tanggal_mulai'],
             'is_active' => ['boolean'],
         ]);
 
@@ -60,20 +65,25 @@ class TahunAkademikController extends Controller
         $tahunAkademik = TahunAkademik::create($validated);
 
         // Auto create semesters (Ganjil & Genap)
+        $tahunMulai = Carbon::parse($validated['tanggal_mulai'])->year;
+        $tahunSelesai = Carbon::parse($validated['tanggal_selesai'])->year;
+
         Semester::create([
             'tahun_akademik_id' => $tahunAkademik->id,
+            'kode' => "{$tahunMulai}1",
             'nama' => 'Ganjil',
             'tipe' => 'ganjil',
-            'tanggal_mulai' => "{$validated['tahun_mulai']}-09-01",
-            'tanggal_selesai' => "{$validated['tahun_mulai']}-12-31",
+            'tanggal_mulai' => Carbon::parse($validated['tanggal_mulai']),
+            'tanggal_selesai' => Carbon::parse($validated['tanggal_mulai'])->addMonths(4),
         ]);
 
         Semester::create([
             'tahun_akademik_id' => $tahunAkademik->id,
+            'kode' => "{$tahunMulai}2",
             'nama' => 'Genap',
             'tipe' => 'genap',
-            'tanggal_mulai' => "{$validated['tahun_selesai']}-01-01",
-            'tanggal_selesai' => "{$validated['tahun_selesai']}-06-30",
+            'tanggal_mulai' => Carbon::parse($validated['tanggal_mulai'])->addMonths(5),
+            'tanggal_selesai' => Carbon::parse($validated['tanggal_selesai']),
         ]);
 
         return redirect()->route('tahun-akademik.index')
@@ -86,9 +96,10 @@ class TahunAkademikController extends Controller
     public function update(Request $request, TahunAkademik $tahunAkademik)
     {
         $validated = $request->validate([
+            'kode' => ['required', 'string', 'max:20', "unique:tahun_akademiks,kode,{$tahunAkademik->id}"],
             'nama' => ['required', 'string', 'max:255'],
-            'tahun_mulai' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'tahun_selesai' => ['required', 'integer', 'min:2000', 'max:2100', 'gt:tahun_mulai'],
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after:tanggal_mulai'],
             'is_active' => ['boolean'],
         ]);
 

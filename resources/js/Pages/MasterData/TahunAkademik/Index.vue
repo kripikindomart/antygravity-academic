@@ -36,7 +36,7 @@
                         <div>
                             <p class="text-white/70 text-sm">Tahun Akademik Aktif</p>
                             <p class="text-2xl font-bold">{{ activeTahunAkademik.nama }}</p>
-                            <p class="text-white/70 text-sm">{{ activeTahunAkademik.tahun_mulai }} - {{ activeTahunAkademik.tahun_selesai }}</p>
+                            <p class="text-white/70 text-sm">{{ activeTahunAkademik.kode }}</p>
                         </div>
                     </div>
                     <div class="px-4 py-2 bg-white/20 rounded-lg backdrop-blur-sm">
@@ -72,15 +72,19 @@
                     <div class="flex items-start justify-between mb-4">
                         <div>
                             <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ ta.nama }}</h3>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">{{ ta.tahun_mulai }} - {{ ta.tahun_selesai }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">{{ ta.kode }}</p>
                         </div>
                         <span v-if="ta.is_active" class="px-2.5 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-xs font-semibold rounded-full">Aktif</span>
                     </div>
                     
-                    <div class="flex items-center gap-2 mb-4">
-                        <div class="flex-1 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ ta.semesters_count || 0 }}</p>
-                            <p class="text-xs text-gray-500">Semester</p>
+                    <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-500">Periode:</span>
+                            <span class="font-medium text-gray-900 dark:text-white">{{ formatDate(ta.tanggal_mulai) }} - {{ formatDate(ta.tanggal_selesai) }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm mt-2">
+                            <span class="text-gray-500">Semester:</span>
+                            <span class="font-medium text-gray-900 dark:text-white">{{ ta.semesters_count || 0 }}</span>
                         </div>
                     </div>
 
@@ -146,19 +150,25 @@
                         </div>
 
                         <form @submit.prevent="submitForm" class="p-6 space-y-5">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Nama <span class="text-red-500">*</span></label>
-                                <input v-model="form.nama" type="text" required placeholder="TA 2024/2025" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Kode <span class="text-red-500">*</span></label>
+                                    <input v-model="form.kode" type="text" required placeholder="2024/2025" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Nama <span class="text-red-500">*</span></label>
+                                    <input v-model="form.nama" type="text" required placeholder="TA 2024/2025" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                                </div>
                             </div>
 
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tahun Mulai <span class="text-red-500">*</span></label>
-                                    <input v-model.number="form.tahun_mulai" type="number" required min="2000" max="2100" placeholder="2024" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Mulai <span class="text-red-500">*</span></label>
+                                    <input v-model="form.tanggal_mulai" type="date" required class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tahun Selesai <span class="text-red-500">*</span></label>
-                                    <input v-model.number="form.tahun_selesai" type="number" required min="2000" max="2100" placeholder="2025" class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Selesai <span class="text-red-500">*</span></label>
+                                    <input v-model="form.tanggal_selesai" type="date" required class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
                                 </div>
                             </div>
 
@@ -229,10 +239,13 @@ const showDeleteModal = ref(false);
 const editingItem = ref(null);
 const itemToDelete = ref(null);
 
+const currentYear = new Date().getFullYear();
+
 const form = useForm({
+    kode: '',
     nama: '',
-    tahun_mulai: new Date().getFullYear(),
-    tahun_selesai: new Date().getFullYear() + 1,
+    tanggal_mulai: '',
+    tanggal_selesai: '',
     is_active: false,
 });
 
@@ -252,18 +265,25 @@ const reloadData = () => {
     router.reload({ onFinish: () => { isLoading.value = false; } });
 };
 
+const formatDate = (date) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 const openModal = (item = null) => {
     editingItem.value = item;
     if (item) {
+        form.kode = item.kode;
         form.nama = item.nama;
-        form.tahun_mulai = item.tahun_mulai;
-        form.tahun_selesai = item.tahun_selesai;
+        form.tanggal_mulai = item.tanggal_mulai?.split('T')[0] || '';
+        form.tanggal_selesai = item.tanggal_selesai?.split('T')[0] || '';
         form.is_active = item.is_active;
     } else {
         form.reset();
-        form.tahun_mulai = new Date().getFullYear();
-        form.tahun_selesai = new Date().getFullYear() + 1;
-        form.nama = `TA ${form.tahun_mulai}/${form.tahun_selesai}`;
+        form.kode = `${currentYear}/${currentYear + 1}`;
+        form.nama = `TA ${currentYear}/${currentYear + 1}`;
+        form.tanggal_mulai = `${currentYear}-09-01`;
+        form.tanggal_selesai = `${currentYear + 1}-08-31`;
     }
     showModal.value = true;
 };

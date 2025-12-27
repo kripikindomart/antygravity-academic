@@ -4,20 +4,24 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class TahunAkademik extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        'kode',
         'nama',
-        'tahun_mulai',
-        'tahun_selesai',
+        'tanggal_mulai',
+        'tanggal_selesai',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'tanggal_mulai' => 'date',
+        'tanggal_selesai' => 'date',
     ];
 
     /**
