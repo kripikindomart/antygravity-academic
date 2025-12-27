@@ -55,8 +55,8 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{role}', [RoleController::class, 'destroy'])->name('destroy')->middleware('permission:roles.delete');
     });
 
-    // Master Data - Tahun Akademik
-    Route::prefix('master/tahun-akademik')->name('tahun-akademik.')->middleware('permission:semester.view')->group(function () {
+    // Master Data - Tahun Akademik (Akademik only)
+    Route::prefix('master/tahun-akademik')->name('tahun-akademik.')->middleware('permission:semester.create')->group(function () {
         Route::get('/', [TahunAkademikController::class, 'index'])->name('index');
         Route::post('/', [TahunAkademikController::class, 'store'])->name('store');
         Route::put('/{tahunAkademik}', [TahunAkademikController::class, 'update'])->name('update');
@@ -82,10 +82,49 @@ Route::middleware('auth')->group(function () {
     });
 
     // Master Data - Mata Kuliah
-    Route::prefix('mata-kuliah')->name('mata-kuliah.')->middleware('permission:matakuliah.view')->group(function () {
+    Route::prefix('master/mata-kuliah')->name('mata-kuliah.')->middleware('permission:matakuliah.view')->group(function () {
         Route::get('/', [\App\Http\Controllers\MataKuliahController::class, 'index'])->name('index');
         Route::post('/', [\App\Http\Controllers\MataKuliahController::class, 'store'])->name('store')->middleware('permission:matakuliah.create');
         Route::put('/{mataKuliah}', [\App\Http\Controllers\MataKuliahController::class, 'update'])->name('update')->middleware('permission:matakuliah.edit');
         Route::delete('/{mataKuliah}', [\App\Http\Controllers\MataKuliahController::class, 'destroy'])->name('destroy')->middleware('permission:matakuliah.delete');
+        Route::post('/import', [\App\Http\Controllers\MataKuliahController::class, 'import'])->name('import')->middleware('permission:matakuliah.create');
+        Route::get('/template', [\App\Http\Controllers\MataKuliahController::class, 'downloadTemplate'])->name('template');
+        Route::post('/bulk-delete', [\App\Http\Controllers\MataKuliahController::class, 'bulkDelete'])->name('bulk-delete')->middleware('permission:matakuliah.delete');
+        Route::post('/bulk-restore', [\App\Http\Controllers\MataKuliahController::class, 'bulkRestore'])->name('bulk-restore')->middleware('permission:matakuliah.delete');
+        Route::post('/{id}/restore', [\App\Http\Controllers\MataKuliahController::class, 'restore'])->name('restore')->middleware('permission:matakuliah.delete');
+        Route::delete('/{id}/force-delete', [\App\Http\Controllers\MataKuliahController::class, 'forceDelete'])->name('force-delete')->middleware('permission:matakuliah.delete');
+    });
+
+    // Menu Management
+    Route::prefix('menus')->name('menus.')->middleware('permission:roles.view')->group(function () {
+        Route::get('/', [\App\Http\Controllers\MenuController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\MenuController::class, 'store'])->name('store');
+        Route::put('/{menu}', [\App\Http\Controllers\MenuController::class, 'update'])->name('update');
+        Route::delete('/{menu}', [\App\Http\Controllers\MenuController::class, 'destroy'])->name('destroy');
+        Route::post('/update-order', [\App\Http\Controllers\MenuController::class, 'updateOrder'])->name('update-order');
+        Route::post('/{menu}/role-visibility', [\App\Http\Controllers\MenuController::class, 'updateRoleVisibility'])->name('role-visibility');
+        Route::post('/sync-sidebar', [\App\Http\Controllers\MenuController::class, 'syncFromSidebar'])->name('sync-sidebar');
+    });
+
+    // Kurikulum OBE
+    Route::prefix('kurikulum')->name('kurikulum.')->middleware('permission:kurikulum.view')->group(function () {
+        Route::get('/', [\App\Http\Controllers\KurikulumController::class, 'index'])->name('index');
+        Route::get('/{kurikulum}', [\App\Http\Controllers\KurikulumController::class, 'show'])->name('show');
+        Route::post('/', [\App\Http\Controllers\KurikulumController::class, 'store'])->name('store')->middleware('permission:kurikulum.create');
+        Route::put('/{kurikulum}', [\App\Http\Controllers\KurikulumController::class, 'update'])->name('update')->middleware('permission:kurikulum.edit');
+        Route::delete('/{kurikulum}', [\App\Http\Controllers\KurikulumController::class, 'destroy'])->name('destroy')->middleware('permission:kurikulum.delete');
+
+        // CPL Management
+        Route::post('/{kurikulum}/cpl', [\App\Http\Controllers\KurikulumController::class, 'storeCpl'])->name('cpl.store')->middleware('permission:kurikulum.edit');
+        Route::put('/cpl/{cpl}', [\App\Http\Controllers\KurikulumController::class, 'updateCpl'])->name('cpl.update')->middleware('permission:kurikulum.edit');
+        Route::delete('/cpl/{cpl}', [\App\Http\Controllers\KurikulumController::class, 'destroyCpl'])->name('cpl.destroy')->middleware('permission:kurikulum.delete');
+
+        // MK Management
+        Route::get('/{kurikulum}/available-mk', [\App\Http\Controllers\KurikulumController::class, 'getAvailableMk'])->name('mk.available');
+        Route::post('/{kurikulum}/assign-mk', [\App\Http\Controllers\KurikulumController::class, 'assignMk'])->name('mk.assign')->middleware('permission:kurikulum.edit');
+        Route::delete('/{kurikulum}/remove-mk/{mk}', [\App\Http\Controllers\KurikulumController::class, 'removeMk'])->name('mk.remove')->middleware('permission:kurikulum.edit');
+
+        // Duplicate Kurikulum
+        Route::post('/{kurikulum}/duplicate', [\App\Http\Controllers\KurikulumController::class, 'duplicate'])->name('duplicate')->middleware('permission:kurikulum.create');
     });
 });

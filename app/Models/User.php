@@ -106,4 +106,14 @@ class User extends Authenticatable
     {
         return $this->hasRole('mahasiswa');
     }
+
+    /**
+     * Get the program studis that the user belongs to.
+     */
+    public function prodis()
+    {
+        return $this->belongsToMany(ProgramStudi::class, 'user_prodi', 'user_id', 'program_studi_id')
+            ->withPivot('is_primary')
+            ->withTimestamps();
+    }
 }

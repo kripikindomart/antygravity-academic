@@ -32,6 +32,10 @@ class MataKuliahController extends Controller
                 $query->where('jenis', $jenis);
             });
 
+        if ($request->has('trash') && $request->trash) {
+            $query->onlyTrashed();
+        }
+
         // Add filter for status if needed, defaults to all if not specified, 
         // but schema has is_active default true.
         if ($request->has('status') && $request->status !== '') {
@@ -53,11 +57,19 @@ class MataKuliahController extends Controller
             ->select('id', 'kode', 'nama', 'prodi_id')
             ->get();
 
+        // Get user's bound prodi (for staff_prodi role)
+        $userProdiId = null;
+        $user = $request->user();
+        if ($user && $user->prodis()->count() === 1) {
+            $userProdiId = $user->prodis()->first()->id;
+        }
+
         return Inertia::render('MasterData/MataKuliah/Index', [
             'mataKuliahs' => $mataKuliahs,
             'prodis' => $prodis,
-            'allMataKuliahs' => $allMataKuliahs, // Optimized in future if heavy
-            'filters' => $request->only(['search', 'prodi_id', 'semester', 'jenis', 'status']),
+            'allMataKuliahs' => $allMataKuliahs,
+            'filters' => $request->only(['search', 'prodi_id', 'semester', 'jenis', 'status', 'trash']),
+            'userProdiId' => $userProdiId,
         ]);
     }
 
@@ -121,11 +133,184 @@ class MataKuliahController extends Controller
      */
     public function destroy(MataKuliah $mataKuliah)
     {
-        // Check if used in kurikulum or has dependent MKs?
-        // Soft delete handles it safely usually.
         $mataKuliah->delete();
 
         return redirect()->route('mata-kuliah.index')
             ->with('success', 'Mata Kuliah berhasil dihapus.');
     }
+
+    /**
+     * Restore trashed item
+     */
+    public function restore($id)
+    {
+        $mataKuliah = MataKuliah::withTrashed()->findOrFail($id);
+        $mataKuliah->restore();
+
+        return redirect()->route('mata-kuliah.index', ['trash' => 1])
+            ->with('success', 'Mata Kuliah berhasil dipulihkan.');
+    }
+
+    /**
+     * Force delete item
+     */
+    public function forceDelete($id)
+    {
+        $mataKuliah = MataKuliah::withTrashed()->findOrFail($id);
+        $mataKuliah->forceDelete();
+
+        return redirect()->route('mata-kuliah.index', ['trash' => 1])
+            ->with('success', 'Mata Kuliah berhasil dihapus permanen.');
+    }
+
+    /**
+     * Import from Excel
+     */
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls'],
+            'prodi_id' => ['required', 'exists:program_studis,id'],
+        ]);
+
+        $file = $request->file('file');
+        $prodiId = $request->prodi_id;
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            $imported = 0;
+            $skipped = 0;
+
+            // Skip header row
+            foreach (array_slice($rows, 1) as $row) {
+                $kode = trim($row[0] ?? '');
+                $nama = trim($row[1] ?? '');
+                $namaEn = trim($row[2] ?? '');
+                $sksTeori = (int) ($row[3] ?? 0);
+                $sksPraktik = (int) ($row[4] ?? 0);
+                $semester = (int) ($row[5] ?? 1);
+                $jenis = strtolower(trim($row[6] ?? 'wajib'));
+
+                if (empty($kode) || empty($nama)) {
+                    $skipped++;
+                    continue;
+                }
+
+                // Check duplicate (including trashed)
+                if (MataKuliah::withTrashed()->where('kode', $kode)->exists()) {
+                    $skipped++;
+                    continue;
+                }
+
+                MataKuliah::create([
+                    'prodi_id' => $prodiId,
+                    'kode' => $kode,
+                    'nama' => $nama,
+                    'nama_en' => $namaEn ?: null,
+                    'sks_teori' => $sksTeori,
+                    'sks_praktik' => $sksPraktik,
+                    'semester' => max(1, min(8, $semester)),
+                    'jenis' => in_array($jenis, ['wajib', 'pilihan']) ? $jenis : 'wajib',
+                    'is_active' => true,
+                ]);
+                $imported++;
+            }
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => "{$imported} Mata Kuliah berhasil diimport. {$skipped} dilewati (duplikat/kosong).",
+                    'success' => true,
+                ]);
+            }
+
+            return back()->with('success', "{$imported} Mata Kuliah berhasil diimport. {$skipped} dilewati (duplikat/kosong).");
+        } catch (\Exception $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Gagal import: ' . $e->getMessage(),
+                ], 500);
+            }
+            return back()->with('error', 'Gagal import: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Excel template
+     */
+    public function downloadTemplate()
+    {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Header
+        $headers = ['Kode MK', 'Nama (Indonesia)', 'Nama (Inggris)', 'SKS Teori', 'SKS Praktik', 'Semester', 'Jenis (wajib/pilihan)'];
+        $sheet->fromArray($headers, null, 'A1');
+
+        // Style header
+        $sheet->getStyle('A1:G1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '4F46E5']],
+        ]);
+
+        // Sample data
+        $sample = [
+            ['MK001', 'Metodologi Penelitian', 'Research Methodology', 2, 0, 1, 'wajib'],
+            ['MK002', 'Statistika Lanjut', 'Advanced Statistics', 3, 0, 1, 'wajib'],
+        ];
+        $sheet->fromArray($sample, null, 'A2');
+
+        // Auto width
+        foreach (range('A', 'G') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $filename = 'template_import_mata_kuliah.xlsx';
+        $path = storage_path('app/public/' . $filename);
+        $writer->save($path);
+
+        return response()->download($path, $filename)->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Bulk delete / Force Delete
+     */
+    public function bulkDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['integer'], // Can be generic integer validation as we check db below
+        ]);
+
+        $ids = $validated['ids'];
+
+        if ($request->force) {
+            $count = MataKuliah::onlyTrashed()->whereIn('id', $ids)->forceDelete();
+            $msg = "{$count} Mata Kuliah berhasil dihapus permanen.";
+        } else {
+            $count = MataKuliah::whereIn('id', $ids)->delete();
+            $msg = "{$count} Mata Kuliah berhasil dihapus.";
+        }
+
+        return back()->with('success', $msg);
+    }
+
+    /**
+     * Bulk Restore
+     */
+    public function bulkRestore(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $count = MataKuliah::onlyTrashed()->whereIn('id', $validated['ids'])->restore();
+
+        return back()->with('success', "{$count} Mata Kuliah berhasil dipulihkan.");
+    }
 }
+

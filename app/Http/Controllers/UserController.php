@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\ProgramStudi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -16,7 +17,7 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
-        $query = User::with('roles')
+        $query = User::with(['roles', 'prodis'])
             ->when($request->tab === 'trash', function ($q) {
                 $q->onlyTrashed();
             })
@@ -33,6 +34,9 @@ class UserController extends Controller
             })
             ->when($request->status !== null && $request->tab !== 'trash', function ($q) use ($request) {
                 $q->where('is_active', $request->status === 'active');
+            })
+            ->when($request->prodi, function ($q, $prodi) {
+                $q->whereHas('prodis', fn($q) => $q->where('program_studis.id', $prodi));
             });
 
         $users = $query->orderBy($request->sort ?? 'created_at', $request->order ?? 'desc')
@@ -54,9 +58,10 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => Role::all(),
-            'filters' => $request->only(['search', 'role', 'status', 'sort', 'order', 'tab']),
+            'filters' => $request->only(['search', 'role', 'status', 'sort', 'order', 'tab', 'prodi']),
             'counts' => $counts,
             'roleStats' => $roleStats,
+            'prodis' => ProgramStudi::select('id', 'nama', 'kode')->orderBy('nama')->get(),
         ]);
     }
 
@@ -82,6 +87,7 @@ class UserController extends Controller
             'phone' => ['nullable', 'string', 'max:20'],
             'is_active' => ['boolean'],
             'roles' => ['required', 'array', 'min:1'],
+            'prodis' => ['nullable', 'array'],
         ]);
 
         $user = User::create([
@@ -93,6 +99,10 @@ class UserController extends Controller
         ]);
 
         $user->syncRoles($validated['roles']);
+
+        if (isset($validated['prodis'])) {
+            $user->prodis()->sync($validated['prodis']);
+        }
 
         return redirect()->route('users.index')
             ->with('success', 'User berhasil ditambahkan.');
@@ -121,6 +131,7 @@ class UserController extends Controller
             'phone' => ['nullable', 'string', 'max:20'],
             'is_active' => ['boolean'],
             'roles' => ['required', 'array', 'min:1'],
+            'prodis' => ['nullable', 'array'],
         ]);
 
         $updateData = [
@@ -136,6 +147,10 @@ class UserController extends Controller
 
         $user->update($updateData);
         $user->syncRoles($validated['roles']);
+
+        if (isset($validated['prodis'])) {
+            $user->prodis()->sync($validated['prodis']);
+        }
 
         return redirect()->route('users.index')
             ->with('success', 'User berhasil diperbarui.');

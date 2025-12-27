@@ -85,6 +85,10 @@
                         <option value="active">Aktif</option>
                         <option value="inactive">Non-aktif</option>
                     </select>
+                    <select v-model="localFilters.prodi" @change="applyFilters" class="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-0 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500/20">
+                        <option value="">Semua Prodi</option>
+                        <option v-for="prodi in prodis" :key="prodi.id" :value="prodi.id">{{ prodi.nama }}</option>
+                    </select>
                 </div>
             </div>
 
@@ -285,6 +289,19 @@
                                     </div>
                                 </div>
 
+                                <!-- Program Studi (Khusus Staff Prodi) -->
+                                <div v-if="form.roles.includes('staff_prodi')">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Program Studi <span class="text-red-500">*</span></label>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border rounded-xl border-gray-200 dark:border-gray-700">
+                                        <label v-for="prodi in prodis" :key="prodi.id" :class="['flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors', form.prodis.includes(prodi.id) ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-100 dark:hover:bg-gray-800']">
+                                            <input type="checkbox" :value="prodi.id" v-model="form.prodis" class="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"/>
+                                            <span class="text-sm text-gray-700 dark:text-gray-300">{{ prodi.nama }} ({{ prodi.kode }})</span>
+                                        </label>
+                                        <p v-if="!prodis || prodis.length === 0" class="col-span-2 text-center text-gray-400 py-2">Tidak ada data Program Studi</p>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">Pilih Program Studi yang dikelola user ini.</p>
+                                </div>
+
                                 <!-- Status Toggle -->
                                 <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                                     <div>
@@ -350,6 +367,7 @@ const props = defineProps({
     filters: Object,
     counts: Object,
     roleStats: Object,
+    prodis: Array,
 });
 
 const page = usePage();
@@ -360,6 +378,7 @@ const localFilters = ref({
     search: props.filters?.search || '',
     role: props.filters?.role || '',
     status: props.filters?.status || '',
+    prodi: props.filters?.prodi || '',
 });
 
 const selectedIds = ref([]);
@@ -379,6 +398,7 @@ const form = useForm({
     password_confirmation: '',
     is_active: true,
     roles: [],
+    prodis: [],
 });
 
 let searchTimeout = null;
@@ -462,6 +482,7 @@ const openModal = (user = null) => {
         form.password_confirmation = '';
         form.is_active = user.is_active ?? true;
         form.roles = (user.roles || []).map(r => r.name);
+        form.prodis = (user.prodis || []).map(p => p.id);
     } else {
         form.reset();
         form.is_active = true;

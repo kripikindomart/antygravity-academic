@@ -51,6 +51,76 @@ class HandleInertiaRequests extends Middleware
                 'name' => config('app.name'),
                 'locale' => app()->getLocale(),
             ],
+            'sidebarMenus' => fn() => $this->getSidebarMenus($request),
         ];
+    }
+
+    /**
+     * Get sidebar menus for the current user
+     */
+    protected function getSidebarMenus(Request $request): array
+    {
+        if (!$request->user()) {
+            return [];
+        }
+
+        $userPermissions = $request->user()->getAllPermissions()->pluck('name')->toArray();
+        $userRoleIds = $request->user()->roles->pluck('id')->toArray();
+
+        $menus = \App\Models\Menu::active()
+            ->root()
+            ->with([
+                'children' => function ($q) {
+                    $q->active()->orderBy('order');
+                },
+                'roles'
+            ])
+            ->orderBy('section')
+            ->orderBy('order')
+            ->get()
+            ->filter(function ($menu) use ($userPermissions, $userRoleIds) {
+                // Check role override first
+                $roleOverride = $menu->roles->whereIn('id', $userRoleIds)->first();
+
+                if ($roleOverride) {
+                    return $roleOverride->pivot->is_visible;
+                }
+
+                // Fall back to permission check
+                if (empty($menu->permission)) {
+                    return true; // No permission required (public)
+                }
+
+                return in_array($menu->permission, $userPermissions);
+            })
+            ->values()
+            ->toArray();
+
+        // Group by section with custom ordering
+        $sectionOrder = [
+            'Menu Utama' => 1,
+            'Akademik' => 2,
+            'Master Data' => 3,
+            'Manajemen' => 4,
+            'Laporan' => 5,
+        ];
+
+        $grouped = [];
+        foreach ($menus as $menu) {
+            $section = $menu['section'] ?? 'Lainnya';
+            if (!isset($grouped[$section])) {
+                $grouped[$section] = [];
+            }
+            $grouped[$section][] = $menu;
+        }
+
+        // Sort sections by predefined order
+        uksort($grouped, function ($a, $b) use ($sectionOrder) {
+            $orderA = $sectionOrder[$a] ?? 99;
+            $orderB = $sectionOrder[$b] ?? 99;
+            return $orderA <=> $orderB;
+        });
+
+        return $grouped;
     }
 }

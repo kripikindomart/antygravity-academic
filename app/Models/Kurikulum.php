@@ -33,10 +33,28 @@ class Kurikulum extends Model
         return $this->belongsTo(ProgramStudi::class);
     }
 
+    /**
+     * CPL - Capaian Pembelajaran Lulusan
+     */
+    public function cpls()
+    {
+        return $this->hasMany(Cpl::class)->orderBy('urutan');
+    }
+
     public function mataKuliahs()
     {
         return $this->belongsToMany(MataKuliah::class, 'kurikulum_mata_kuliah')
             ->withPivot('semester_rekomendasi')
             ->withTimestamps();
+    }
+
+    public function getTotalSksAttribute(): int
+    {
+        return $this->total_sks_wajib + $this->total_sks_pilihan;
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
     }
 }

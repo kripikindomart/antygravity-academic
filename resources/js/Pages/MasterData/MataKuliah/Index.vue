@@ -2,14 +2,33 @@
     <AppLayout>
         <Head title="Mata Kuliah" />
         
-        <div class="space-y-6">
-            <!-- Header -->
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div class="py-8">
+            <!-- Tabs -->
+            <div class="flex items-center gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
+                <button @click="switchTab('active')" :class="['px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px', currentTab === 'active' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']">
+                    Aktif
+                </button>
+                <button @click="switchTab('trash')" :class="['px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2', currentTab === 'trash' ? 'border-red-500 text-red-600 dark:text-red-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Sampah
+                </button>
+            </div>
+
+            <!-- Filters & Search -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Mata Kuliah</h1>
                     <p class="text-gray-500 dark:text-gray-400 mt-1">Kelola data mata kuliah dan SKS</p>
                 </div>
                 <div class="flex items-center gap-3">
+                    <a href="/master/mata-kuliah/template" class="p-2.5 bg-green-100 dark:bg-green-900/30 hover:bg-green-200 text-green-600 dark:text-green-400 rounded-xl transition-all flex items-center gap-2" title="Download Template">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        Template
+                    </a>
+                    <button @click="showImportModal = true" class="px-4 py-2.5 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 text-amber-600 dark:text-amber-400 rounded-xl transition-all flex items-center gap-2" title="Import Excel">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                        Import
+                    </button>
                     <button @click="reloadData" class="p-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-xl transition-all" title="Refresh">
                         <svg class="w-5 h-5" :class="{'animate-spin': isLoading}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -46,12 +65,45 @@
                 </div>
             </div>
 
+            <!-- Bulk Action Toolbar -->
+            <Transition name="slide">
+                <div v-if="selectedIds.length > 0" class="bg-gradient-to-r from-red-500 to-pink-500 rounded-2xl p-4 flex items-center justify-between text-white shadow-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center font-bold">{{ selectedIds.length }}</div>
+                        <span class="font-medium">Item dipilih</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="selectedIds = []; selectAll = false" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl font-medium transition">Batal</button>
+                        
+                        <template v-if="currentTab === 'active'">
+                            <button @click="bulkDelete(false)" class="px-4 py-2 bg-white text-red-600 hover:bg-white/90 rounded-xl font-semibold transition flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                Hapus Terpilih
+                            </button>
+                        </template>
+                        <template v-else>
+                            <button @click="bulkRestore" class="px-4 py-2 bg-white text-green-600 hover:bg-white/90 rounded-xl font-semibold transition flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                Pulihkan
+                            </button>
+                            <button @click="bulkDelete(true)" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl font-medium transition flex items-center gap-2 border border-white/40">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                Hapus Permanen
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </Transition>
+
             <!-- Table -->
             <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-gradient-to-r from-primary-600 to-primary-700">
                             <tr>
+                                <th class="px-4 py-4 text-left">
+                                    <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" class="w-4 h-4 rounded border-white/30 text-white focus:ring-0"/>
+                                </th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Kode</th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Nama Mata Kuliah</th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase">SKS</th>
@@ -63,6 +115,9 @@
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
                             <tr v-for="mk in (mataKuliahs?.data || [])" :key="mk.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                <td class="px-4 py-4">
+                                    <input type="checkbox" :value="mk.id" v-model="selectedIds" class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"/>
+                                </td>
                                 <td class="px-6 py-4">
                                     <span class="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 px-2 py-1 rounded">{{ mk.kode }}</span>
                                 </td>
@@ -91,12 +146,22 @@
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-end gap-1">
-                                        <button @click="openModal(mk)" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Edit">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                                        </button>
-                                        <button @click="confirmDelete(mk)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Hapus">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                                        </button>
+                                        <template v-if="currentTab === 'active'">
+                                            <button @click="openModal(mk)" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Edit">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                            </button>
+                                            <button @click="confirmDelete(mk)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Hapus">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                            </button>
+                                        </template>
+                                        <template v-else>
+                                            <button @click="restoreItem(mk)" class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors" title="Pulihkan">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                            </button>
+                                            <button @click="confirmForceDelete(mk)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Hapus Permanen">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                            </button>
+                                        </template>
                                     </div>
                                 </td>
                             </tr>
@@ -130,7 +195,7 @@
             <Transition name="modal">
                 <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showModal = false">
                     <div class="absolute inset-0 bg-gray-900/70 backdrop-blur-sm"></div>
-                    <div class="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden animate-modal-in">
+                    <div class="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden animate-modal-in max-h-[90vh] flex flex-col">
                         <div class="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-5">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-4">
@@ -150,14 +215,15 @@
                             </div>
                         </div>
 
-                        <form @submit.prevent="submitForm" class="p-6 space-y-6">
+                        <form @submit.prevent="submitForm" class="p-6 space-y-5 overflow-y-auto flex-1">
                             <!-- Prodi Selection -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Program Studi <span class="text-red-500">*</span></label>
-                                <select v-model="form.prodi_id" required class="block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500 text-gray-900 dark:text-white">
+                                <select v-model="form.prodi_id" required :disabled="isProdiLocked && !editingItem" :class="['block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500 text-gray-900 dark:text-white', isProdiLocked && !editingItem ? 'cursor-not-allowed opacity-70' : '']">
                                     <option value="" disabled>Pilih Program Studi</option>
-                                    <option v-for="prodi in prodis" :key="prodi.id" :value="prodi.id">{{ prodi.nama }} ({{ prodi.jenjang }})</option>
+                                    <option v-for="prodi in prodis" :key="prodi.id" :value="prodi.id">{{ prodi.nama }} ({{ prodi.jenjang?.toUpperCase() }})</option>
                                 </select>
+                                <p v-if="isProdiLocked && !editingItem" class="text-xs text-gray-500 mt-1">* Prodi otomatis sesuai akun Anda</p>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -226,6 +292,69 @@
             </Transition>
         </Teleport>
 
+        <!-- Import Modal -->
+        <Teleport to="body">
+            <Transition name="modal">
+                <div v-if="showImportModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div class="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" @click="showImportModal = false"></div>
+                    <div class="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-lg w-full animate-modal-in overflow-hidden">
+                        <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                                </div>
+                                <div>
+                                    <h2 class="text-xl font-bold text-white">Import Mata Kuliah</h2>
+                                    <p class="text-white/70 text-sm">Upload file Excel (.xlsx)</p>
+                                </div>
+                            </div>
+                        </div>
+                        <form @submit.prevent="submitImport" class="p-6 space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Program Studi <span class="text-red-500">*</span></label>
+                                <select v-model="importProdiId" required :disabled="isProdiLocked" :class="['block w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl', isProdiLocked ? 'cursor-not-allowed opacity-70' : '']">
+                                    <option value="" disabled>Pilih Program Studi</option>
+                                    <option v-for="prodi in prodis" :key="prodi.id" :value="prodi.id">{{ prodi.nama }} ({{ prodi.jenjang?.toUpperCase() }})</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">File Excel <span class="text-red-500">*</span></label>
+                                <input ref="fileInput" type="file" @change="onFileChange" accept=".xlsx,.xls" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-amber-50 file:text-amber-600 hover:file:bg-amber-100 dark:file:bg-amber-900/30 dark:file:text-amber-400"/>
+                                <p class="text-xs text-gray-500 mt-1">Download template terlebih dahulu untuk format yang benar</p>
+                            </div>
+                            <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <button type="button" @click="showImportModal = false" class="px-5 py-2.5 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-100">Batal</button>
+                                <button type="submit" :disabled="isImporting" class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl disabled:opacity-50 hover:shadow-lg">
+                                    {{ isImporting ? 'Mengimport...' : 'Import' }}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- Bulk Delete Modal -->
+        <Teleport to="body">
+            <div v-if="showBulkDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" @click="showBulkDeleteModal = false"></div>
+                <div class="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl max-w-md w-full p-6 animate-modal-in">
+                    <div class="text-center">
+                        <div class="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+                            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ isBulkForceDelete ? `Hapus Permanen ${selectedIds.length} Item?` : `Hapus ${selectedIds.length} Mata Kuliah?` }}</h3>
+                        <p class="text-gray-500 mb-6" v-if="isBulkForceDelete">Tindakan ini tidak dapat dibatalkan. Semua data terkait akan hilang permanen.</p>
+                        <p class="text-gray-500 mb-6" v-else>Data akan dipindahkan ke folder sampah dan dapat dipulihkan nanti.</p>
+                        <div class="flex gap-3 justify-center">
+                            <button @click="showBulkDeleteModal = false" class="px-5 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700">Batal</button>
+                            <button @click="executeBulkDelete" class="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 shadow-lg shadow-red-500/30">Hapus Semua</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
         <!-- Delete Modal -->
         <Teleport to="body">
             <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -235,8 +364,9 @@
                         <div class="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
                             <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Hapus Mata Kuliah?</h3>
-                        <p class="text-gray-500 mb-6">Yakin ingin menghapus <strong>{{ itemToDelete?.nama }}</strong>? Data kurikulum terkait mungkin akan terpengaruh.</p>
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ isForceDelete ? 'Hapus Permanen?' : 'Hapus Mata Kuliah?' }}</h3>
+                        <p class="text-gray-500 mb-6" v-if="isForceDelete">Yakin ingin menghapus permanen <strong>{{ itemToDelete?.nama }}</strong>?<br>Data yang dihapus tidak dapat dikembalikan.</p>
+                        <p class="text-gray-500 mb-6" v-else>Yakin ingin menghapus <strong>{{ itemToDelete?.nama }}</strong>?<br>Data akan dipindahkan ke folder sampah.</p>
                         <div class="flex gap-3 justify-center">
                             <button @click="showDeleteModal = false" class="px-5 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700">Batal</button>
                             <button @click="executeDelete" class="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 shadow-lg shadow-red-500/30">Hapus</button>
@@ -245,6 +375,32 @@
                 </div>
             </div>
         </Teleport>
+
+        <!-- Toast Notification -->
+        <Teleport to="body">
+            <Transition
+                enter-active-class="transform ease-out duration-300 transition"
+                enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+                enter-to-class="translate-y-0 opacity-100 sm:translate-x-0"
+                leave-active-class="transition ease-in duration-100"
+                leave-from-class="opacity-100"
+                leave-to-class="opacity-0"
+            >
+                <div v-if="toast.show" class="fixed bottom-4 right-4 z-[60] max-w-sm w-full bg-white dark:bg-gray-800 shadow-lg rounded-xl pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden flex items-center p-4 gap-3 border-l-4" :class="toast.type === 'error' ? 'border-red-500' : 'border-green-500'">
+                    <div class="flex-shrink-0">
+                        <svg v-if="toast.type === 'success'" class="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <svg v-else class="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">{{ toast.message }}</p>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </AppLayout>
 </template>
 
@@ -252,25 +408,117 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import axios from 'axios'; // Import Axios
 
 const props = defineProps({
     mataKuliahs: Object,
     prodis: Array,
     allMataKuliahs: Array,
     filters: Object,
+    userProdiId: [Number, String],
 });
+
+const isProdiLocked = !!props.userProdiId;
+
+
 
 const localFilters = ref({
     search: props.filters?.search || '',
     prodi_id: props.filters?.prodi_id || '',
     semester: props.filters?.semester || '',
+    trash: props.filters?.trash || false,
 });
+
+const currentTab = ref(props.filters?.trash ? 'trash' : 'active');
+
+const switchTab = (tab) => {
+    currentTab.value = tab;
+    localFilters.value.trash = tab === 'trash';
+    applyFilters();
+};
 
 const isLoading = ref(false);
 const showModal = ref(false);
 const showDeleteModal = ref(false);
+const showImportModal = ref(false);
+const showBulkDeleteModal = ref(false);
 const editingItem = ref(null);
 const itemToDelete = ref(null);
+const selectedIds = ref([]);
+const selectAll = ref(false);
+
+const isForceDelete = ref(false);
+const isBulkForceDelete = ref(false);
+
+// Toggle select all
+const toggleSelectAll = () => {
+    if (selectAll.value) {
+        selectedIds.value = (props.mataKuliahs?.data || []).map(mk => mk.id);
+    } else {
+        selectedIds.value = [];
+    }
+};
+
+// Bulk delete - open modal
+const bulkDelete = (force = false) => {
+    if (selectedIds.value.length === 0) return;
+    isBulkForceDelete.value = force;
+    showBulkDeleteModal.value = true;
+};
+
+// Execute bulk delete
+const executeBulkDelete = () => {
+    router.post('/master/mata-kuliah/bulk-delete', { 
+        ids: selectedIds.value,
+        force: isBulkForceDelete.value 
+    }, {
+        onSuccess: () => {
+            selectedIds.value = [];
+            selectAll.value = false;
+            showBulkDeleteModal.value = false;
+        }
+    });
+};
+
+const bulkRestore = () => {
+    if (selectedIds.value.length === 0) return;
+    if (!confirm(`Pulihkan ${selectedIds.value.length} mata kuliah?`)) return;
+    
+    router.post('/master/mata-kuliah/bulk-restore', { ids: selectedIds.value }, {
+        onSuccess: () => {
+            selectedIds.value = [];
+            selectAll.value = false;
+        }
+    });
+};
+
+const confirmDelete = (item) => {
+    itemToDelete.value = item;
+    isForceDelete.value = false;
+    showDeleteModal.value = true;
+};
+
+const confirmForceDelete = (item) => {
+    itemToDelete.value = item;
+    isForceDelete.value = true;
+    showDeleteModal.value = true;
+};
+
+const restoreItem = (item) => {
+    if (confirm(`Pulihkan mata kuliah ${item.nama}?`)) {
+        router.post(`/master/mata-kuliah/${item.id}/restore`);
+    }
+};
+
+const executeDelete = () => {
+    const url = isForceDelete.value 
+        ? `/master/mata-kuliah/${itemToDelete.value.id}/force-delete`
+        : `/master/mata-kuliah/${itemToDelete.value.id}`;
+    
+    router.delete(url, { 
+        onSuccess: () => { showDeleteModal.value = false; itemToDelete.value = null; } 
+    });
+};
 
 const form = useForm({
     id: null,
@@ -301,7 +549,16 @@ const debouncedSearch = () => {
 };
 
 const applyFilters = () => {
-    router.get('/master/mata-kuliah', localFilters.value, { preserveState: true, replace: true });
+    // Clean filters: remove null, empty strings, and false values
+    const params = Object.keys(localFilters.value).reduce((acc, key) => {
+        const value = localFilters.value[key];
+        if (value !== null && value !== '' && value !== false) {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+    
+    router.get('/master/mata-kuliah', params, { preserveState: true, replace: true });
 };
 
 const reloadData = () => {
@@ -326,12 +583,14 @@ const openModal = (item = null) => {
     } else {
         form.reset();
         form.id = null;
-        // Preselect prodi if only one or filtered?
-        // Default values
         form.sks_teori = 2;
         form.sks_praktik = 0;
         form.semester = 1;
         form.jenis = 'wajib';
+        // Auto-set prodi for bound users
+        if (isProdiLocked) {
+            form.prodi_id = props.userProdiId;
+        }
     }
     showModal.value = true;
 };
@@ -344,15 +603,59 @@ const submitForm = () => {
     }
 };
 
-const confirmDelete = (item) => {
-    itemToDelete.value = item;
-    showDeleteModal.value = true;
+
+
+// Toast Logic
+const toast = ref({ show: false, message: '', type: 'success' });
+const showToast = (message, type = 'success') => {
+    toast.value = { show: true, message, type };
+    setTimeout(() => toast.value.show = false, 3000);
 };
 
-const executeDelete = () => {
-    router.delete(`/master/mata-kuliah/${itemToDelete.value.id}`, { 
-        onSuccess: () => { showDeleteModal.value = false; itemToDelete.value = null; } 
-    });
+// Import
+const importProdiId = ref(props.userProdiId || '');
+const importFile = ref(null);
+const isImporting = ref(false);
+const fileInput = ref(null);
+
+const onFileChange = (e) => {
+    importFile.value = e.target.files[0];
+};
+
+const submitImport = async () => {
+    if (!importFile.value || !importProdiId.value) return;
+    
+    isImporting.value = true;
+    
+    const formData = new FormData();
+    formData.append('file', importFile.value);
+    formData.append('prodi_id', importProdiId.value);
+    
+    try {
+        // Use Axios directly to bypass Inertia state handling issues with file uploads
+        const response = await axios.post('/master/mata-kuliah/import', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        
+        showImportModal.value = false;
+        importFile.value = null;
+        if (fileInput.value) fileInput.value.value = '';
+        
+        // Reload data
+        router.reload({
+            onSuccess: () => {
+                showToast(response.data.message || 'Import berhasil!', 'success');
+            }
+        });
+
+    } catch (error) {
+        console.error(error);
+        showToast('Gagal import: ' + (error.response?.data?.message || error.message), 'error');
+    } finally {
+        isImporting.value = false;
+    }
 };
 </script>
 
@@ -361,4 +664,6 @@ const executeDelete = () => {
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .animate-modal-in { animation: modalIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes modalIn { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.slide-enter-active, .slide-leave-active { transition: all 0.3s ease; }
+.slide-enter-from, .slide-leave-to { opacity: 0; transform: translateY(-10px); }
 </style>
