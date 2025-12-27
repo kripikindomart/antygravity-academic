@@ -132,14 +132,24 @@ class TahunAkademikController extends Controller
     }
 
     /**
-     * Set tahun akademik as active.
+     * Set semester as active.
      */
-    public function setActive(TahunAkademik $tahunAkademik)
+    public function activateSemester(Semester $semester)
     {
-        TahunAkademik::where('is_active', true)->update(['is_active' => false]);
-        $tahunAkademik->update(['is_active' => true]);
+        \DB::transaction(function () use ($semester) {
+            // Deactivate all semesters
+            Semester::where('is_active', true)->update(['is_active' => false]);
 
-        return redirect()->route('tahun-akademik.index')
-            ->with('success', 'Tahun Akademik aktif berhasil diubah.');
+            // Activate current semester
+            $semester->update(['is_active' => true]);
+
+            // Deactivate all years
+            TahunAkademik::where('is_active', true)->update(['is_active' => false]);
+
+            // Activate parent year
+            $semester->tahunAkademik()->update(['is_active' => true]);
+        });
+
+        return back()->with('success', 'Semester aktif berhasil diubah.');
     }
 }

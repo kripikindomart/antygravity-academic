@@ -85,22 +85,28 @@
                             </div>
                         </div>
                         <!-- Semester List -->
-                        <div v-if="ta.semesters?.length" class="grid grid-cols-2 gap-2">
-                            <div v-for="sem in ta.semesters" :key="sem.id" :class="['p-2.5 rounded-lg border-2', sem.tipe === 'ganjil' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800']">
-                                <p :class="['text-xs font-bold uppercase', sem.tipe === 'ganjil' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400']">{{ sem.nama }}</p>
-                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ formatDate(sem.tanggal_mulai) }}</p>
+                        <div v-if="ta.semesters?.length" class="space-y-2">
+                            <div v-for="sem in ta.semesters" :key="sem.id" :class="['flex items-center justify-between p-3 rounded-xl border transition-all', sem.is_active ? 'bg-primary-50 border-primary-200 dark:bg-primary-900/20 dark:border-primary-800 ring-1 ring-primary-500/30' : 'bg-gray-50 border-gray-100 dark:bg-gray-800 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600']">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <p :class="['text-xs font-bold uppercase tracking-wider', sem.tipe === 'ganjil' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400']">{{ sem.nama }}</p>
+                                        <span v-if="sem.is_active" class="px-1.5 py-0.5 bg-primary-600 text-white text-[10px] font-bold rounded shadow-sm">AKTIF</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ formatDate(sem.tanggal_mulai) }} - {{ formatDate(sem.tanggal_selesai) }}</p>
+                                </div>
+                                
+                                <button v-if="!sem.is_active" @click="activateSemester(sem)" class="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-primary-600 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:border-primary-300 rounded-lg shadow-sm transition-all" title="Set Semester Aktif">
+                                    Aktifkan
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <button v-if="!ta.is_active" @click="setActive(ta)" class="flex-1 px-3 py-2 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-sm font-medium rounded-lg hover:bg-primary-100 transition-colors">
-                            Set Aktif
+                    <div class="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                        <button @click="openModal(ta)" class="flex-1 px-3 py-2 text-gray-600 hover:text-primary-600 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors">
+                            Edit Data
                         </button>
-                        <button @click="openModal(ta)" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Edit">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                        </button>
-                        <button v-if="!ta.is_active && (ta.semesters_count || 0) === 0" @click="confirmDelete(ta)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Hapus">
+                        <button v-if="!ta.is_active && (ta.semesters_count || 0) === 0" @click="confirmDelete(ta)" class="px-3 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Hapus">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
@@ -177,16 +183,7 @@
                                 </div>
                             </div>
 
-                            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                                <div>
-                                    <p class="font-medium text-gray-700 dark:text-gray-300">Status Aktif</p>
-                                    <p class="text-sm text-gray-500">Jadikan tahun akademik aktif</p>
-                                </div>
-                                <label class="relative cursor-pointer">
-                                    <input type="checkbox" v-model="form.is_active" class="sr-only peer"/>
-                                    <div class="w-14 h-7 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-600"></div>
-                                </label>
-                            </div>
+                            <!-- Removed Status Active Checkbox in Form (Activated via List) -->
 
                             <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <button type="button" @click="showModal = false" class="px-6 py-2.5 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">Batal</button>
@@ -302,8 +299,8 @@ const submitForm = () => {
     }
 };
 
-const setActive = (item) => {
-    router.post(`/master/tahun-akademik/${item.id}/set-active`, {}, { preserveScroll: true });
+const activateSemester = (semester) => {
+    router.post(`/master/tahun-akademik/semester/${semester.id}/activate`, {}, { preserveScroll: true });
 };
 
 const confirmDelete = (item) => {

@@ -62,6 +62,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/{tahunAkademik}', [TahunAkademikController::class, 'update'])->name('update');
         Route::delete('/{tahunAkademik}', [TahunAkademikController::class, 'destroy'])->name('destroy');
         Route::post('/{tahunAkademik}/set-active', [TahunAkademikController::class, 'setActive'])->name('set-active');
+        Route::post('/semester/{semester}/activate', [TahunAkademikController::class, 'activateSemester'])->name('activate-semester');
     });
 
     // Master Data - Program Studi
