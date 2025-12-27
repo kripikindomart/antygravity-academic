@@ -62,7 +62,7 @@
                     </p>
                     <NavItem v-if="hasPermission('prodi.view')" href="/prodi" icon="building" label="Program Studi" />
                     <NavItem v-if="hasPermission('ruangan.view')" href="/ruangan" icon="location" label="Ruangan" />
-                    <NavItem v-if="hasPermission('semester.view')" href="/semester" icon="clock" label="Tahun Akademik" />
+                    <NavItem v-if="hasPermission('semester.view')" href="/master/tahun-akademik" icon="clock" label="Tahun Akademik" />
                 </div>
                 
                 <!-- Admin Menu -->
