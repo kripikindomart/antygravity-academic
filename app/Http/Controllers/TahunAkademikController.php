@@ -15,7 +15,9 @@ class TahunAkademikController extends Controller
      */
     public function index(Request $request)
     {
-        $query = TahunAkademik::query()->withCount('semesters');
+        $query = TahunAkademik::query()
+            ->with('semesters')
+            ->withCount('semesters');
 
         if ($request->search) {
             $query->where(function ($q) use ($request) {

@@ -77,14 +77,19 @@
                         <span v-if="ta.is_active" class="px-2.5 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-xs font-semibold rounded-full">Aktif</span>
                     </div>
                     
-                    <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <div class="flex justify-between text-sm">
-                            <span class="text-gray-500">Periode:</span>
-                            <span class="font-medium text-gray-900 dark:text-white">{{ formatDate(ta.tanggal_mulai) }} - {{ formatDate(ta.tanggal_selesai) }}</span>
+                    <div class="mb-4 space-y-2">
+                        <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-500">Periode:</span>
+                                <span class="font-medium text-gray-900 dark:text-white">{{ formatDate(ta.tanggal_mulai) }} - {{ formatDate(ta.tanggal_selesai) }}</span>
+                            </div>
                         </div>
-                        <div class="flex justify-between text-sm mt-2">
-                            <span class="text-gray-500">Semester:</span>
-                            <span class="font-medium text-gray-900 dark:text-white">{{ ta.semesters_count || 0 }}</span>
+                        <!-- Semester List -->
+                        <div v-if="ta.semesters?.length" class="grid grid-cols-2 gap-2">
+                            <div v-for="sem in ta.semesters" :key="sem.id" :class="['p-2.5 rounded-lg border-2', sem.tipe === 'ganjil' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800']">
+                                <p :class="['text-xs font-bold uppercase', sem.tipe === 'ganjil' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400']">{{ sem.nama }}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ formatDate(sem.tanggal_mulai) }}</p>
+                            </div>
                         </div>
                     </div>
 
