@@ -166,14 +166,37 @@
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Mulai <span class="text-red-500">*</span></label>
-                                    <DatePicker v-model="form.tanggal_mulai" placeholder="Pilih tanggal mulai..." />
+                            <!-- Semester Ganjil -->
+                            <div class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
+                                <h3 class="text-sm font-bold text-blue-800 dark:text-blue-300 mb-3 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> Semester Ganjil
+                                </h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Mulai</label>
+                                        <DatePicker v-model="form.ganjil_mulai" placeholder="Tanggal Mulai Ganjil" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Selesai</label>
+                                        <DatePicker v-model="form.ganjil_selesai" placeholder="Tanggal Selesai Ganjil" :min-date="form.ganjil_mulai" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Selesai <span class="text-red-500">*</span></label>
-                                    <DatePicker v-model="form.tanggal_selesai" placeholder="Pilih tanggal selesai..." :min-date="form.tanggal_mulai" />
+                            </div>
+
+                            <!-- Semester Genap -->
+                            <div class="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800">
+                                <h3 class="text-sm font-bold text-green-800 dark:text-green-300 mb-3 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-green-500"></span> Semester Genap
+                                </h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Mulai</label>
+                                        <DatePicker v-model="form.genap_mulai" placeholder="Tanggal Mulai Genap" :min-date="form.ganjil_selesai" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Selesai</label>
+                                        <DatePicker v-model="form.genap_selesai" placeholder="Tanggal Selesai Genap" :min-date="form.genap_mulai" />
+                                    </div>
                                 </div>
                             </div>
 
@@ -250,8 +273,10 @@ const currentYear = new Date().getFullYear();
 const form = useForm({
     kode: '',
     nama: '',
-    tanggal_mulai: '',
-    tanggal_selesai: '',
+    ganjil_mulai: '',
+    ganjil_selesai: '',
+    genap_mulai: '',
+    genap_selesai: '',
     is_active: false,
 });
 
@@ -281,15 +306,27 @@ const openModal = (item = null) => {
     if (item) {
         form.kode = item.kode;
         form.nama = item.nama;
-        form.tanggal_mulai = item.tanggal_mulai?.split('T')[0] || '';
-        form.tanggal_selesai = item.tanggal_selesai?.split('T')[0] || '';
+        
+        // Find semesters
+        const semGanjil = item.semesters?.find(s => s.tipe === 'ganjil');
+        const semGenap = item.semesters?.find(s => s.tipe === 'genap');
+
+        form.ganjil_mulai = semGanjil?.tanggal_mulai?.split('T')[0] || '';
+        form.ganjil_selesai = semGanjil?.tanggal_selesai?.split('T')[0] || '';
+        form.genap_mulai = semGenap?.tanggal_mulai?.split('T')[0] || '';
+        form.genap_selesai = semGenap?.tanggal_selesai?.split('T')[0] || '';
+        
         form.is_active = item.is_active;
     } else {
         form.reset();
         form.kode = `${currentYear}/${currentYear + 1}`;
         form.nama = `TA ${currentYear}/${currentYear + 1}`;
-        form.tanggal_mulai = `${currentYear}-09-01`;
-        form.tanggal_selesai = `${currentYear + 1}-08-31`;
+        
+        // Default dates
+        form.ganjil_mulai = `${currentYear}-09-01`;
+        form.ganjil_selesai = `${currentYear + 1}-01-31`;
+        form.genap_mulai = `${currentYear + 1}-02-01`;
+        form.genap_selesai = `${currentYear + 1}-08-31`;
     }
     showModal.value = true;
 };
