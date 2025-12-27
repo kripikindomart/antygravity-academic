@@ -1,41 +1,37 @@
 <template>
-    <div class="datepicker-wrapper">
+    <div class="w-full">
         <VueDatePicker
             v-model="localValue"
-            locale="id"
+            locale="id-ID"
             :enable-time-picker="false"
-            format="dd MMMM yyyy"
-            preview-format="dd MMMM yyyy"
-            auto-apply
+            :format="formatDate"
             :clearable="clearable"
             :disabled="disabled"
             :placeholder="placeholder"
             :min-date="parsedMinDate"
             :max-date="maxDate"
             :dark="isDark"
-            teleport-center
-            month-name-format="long"
+            teleport="body"
+            auto-apply
+            :month-change-on-scroll="false"
             :week-start="1"
-            hide-input-icon
-            @update:model-value="handleChange"
         >
-            <template #dp-input="{ value, onInput, onEnter, onTab, onClear, onBlur, onKeypress, onPaste, isMenuOpen }">
-                <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
-                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <template #trigger>
+                <div class="relative cursor-pointer group">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="w-5 h-5 text-gray-400 group-hover:text-primary-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                         </svg>
                     </div>
                     <input
                         type="text"
-                        :value="value || ''"
+                        :value="displayValue"
                         :placeholder="placeholder"
                         readonly
-                        class="w-full px-4 py-3 pl-12 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-0 focus:border-primary-500 focus:outline-none transition-colors cursor-pointer text-sm"
-                        @blur="onBlur"
+                        class="w-full px-4 py-3 pl-11 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-0 focus:border-primary-500 focus:outline-none transition-colors cursor-pointer text-sm"
                     />
-                    <div v-if="value && clearable" class="absolute inset-y-0 right-0 pr-4 flex items-center z-10">
-                        <button type="button" @click.stop="handleClear(onClear)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <div v-if="localValue && clearable" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                        <button type="button" @click.stop="clearDate" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -80,109 +76,91 @@ const parsedMinDate = computed(() => {
 const parseValue = (val) => {
     if (!val) return null;
     if (val instanceof Date) return val;
+    // Handle YYYY-MM-DD string
     const date = new Date(val);
     return isNaN(date.getTime()) ? null : date;
+};
+
+// Custom formatter for the input display
+const displayValue = computed(() => {
+    if (!localValue.value) return '';
+    return new Date(localValue.value).toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+    });
+});
+
+// Format for the DatePicker internal display (if triggers fallback)
+const formatDate = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+    });
 };
 
 const formatForBackend = (date) => {
     if (!date) return null;
     const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    // Adjust for timezone offset to ensure YYYY-MM-DD is correct for the selected date
+    const offset = d.getTimezoneOffset() * 60000;
+    const localDate = new Date(d.getTime() - offset);
+    return localDate.toISOString().split('T')[0];
 };
 
-const handleChange = (val) => {
-    emit('update:modelValue', formatForBackend(val));
-};
-
-const handleClear = (onClear) => {
-    if (onClear) onClear();
+const clearDate = () => {
+    localValue.value = null;
     emit('update:modelValue', null);
 };
 
+// Watch for internal changes
+watch(localValue, (newVal) => {
+    if (newVal) {
+        emit('update:modelValue', formatForBackend(newVal));
+    } else {
+        // Only emit null if it was previously set (avoid loop)
+        if (props.modelValue) emit('update:modelValue', null);
+    }
+});
+
+// Watch for external changes
 watch(() => props.modelValue, (newVal) => {
-    localValue.value = parseValue(newVal);
+    // Avoid resetting if the value is effectively the same (comparing YYYY-MM-DD)
+    const currentBackend = formatForBackend(localValue.value);
+    if (newVal !== currentBackend) {
+        localValue.value = parseValue(newVal);
+    }
 }, { immediate: true });
 
-onMounted(() => {
-    localValue.value = parseValue(props.modelValue);
-});
 </script>
 
 <style>
-/* Make sure datepicker popup has high z-index */
-.dp__menu {
-    z-index: 99999 !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4) !important;
-    border-radius: 16px !important;
-    min-width: 280px !important;
-}
-
-.dp__outer_menu_wrap {
-    z-index: 99999 !important;
-}
-
-/* Custom theme variables */
-:root {
-    --dp-font-family: 'Inter', system-ui, sans-serif;
-    --dp-border-radius: 16px;
-    --dp-cell-border-radius: 8px;
-    --dp-button-height: 40px;
-    --dp-month-year-row-height: 44px;
-    --dp-menu-padding: 16px;
+/* Override variables for modern look */
+.dp__theme_light {
     --dp-primary-color: #0284c7;
-    --dp-primary-text-color: #ffffff;
-    --dp-background-color: #ffffff;
-    --dp-text-color: #1f2937;
-    --dp-hover-color: #f0f9ff;
-    --dp-hover-text-color: #0284c7;
-    --dp-border-color: #e5e7eb;
-    --dp-menu-border-color: #e5e7eb;
-    --dp-disabled-color: #f3f4f6;
-    --dp-icon-color: #9ca3af;
+    --dp-border-radius: 12px;
+    --dp-font-family: 'Inter', sans-serif;
 }
-
-.dark {
+.dp__theme_dark {
+    --dp-primary-color: #38bdf8;
+    --dp-border-radius: 12px;
+    --dp-font-family: 'Inter', sans-serif;
     --dp-background-color: #1f2937;
     --dp-text-color: #ffffff;
-    --dp-hover-color: #374151;
-    --dp-hover-text-color: #38bdf8;
-    --dp-border-color: #4b5563;
-    --dp-menu-border-color: #4b5563;
-    --dp-disabled-color: #374151;
-    --dp-icon-color: #6b7280;
+    --dp-border-color: #374151;
 }
 
-.dp__calendar_header_item {
-    font-weight: 600 !important;
-    color: #6b7280 !important;
-    font-size: 0.75rem !important;
+/* Ensure z-index is high enough */
+.dp__menu {
+    z-index: 99999 !important;
+    border: none !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
 }
 
-.dp__today {
-    border: 2px solid #0284c7 !important;
-}
-
-.dp__active_date,
-.dp__overlay_cell_active {
-    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
-}
-
-.dp__calendar_item {
-    transition: all 0.15s ease !important;
-}
-
-.dp__month_year_select:hover {
-    color: #0284c7 !important;
-}
-
-.dp__cell_inner {
-    border-radius: 8px !important;
-}
-
-.dp__action_row {
-    padding: 12px 16px !important;
+/* Hide the time picker toggle just in case */
+.dp__action_row svg {
+    display: none;
 }
 </style>
