@@ -37,9 +37,11 @@
                     </div>
                     <select v-model="localFilters.tipe" @change="applyFilters" class="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-0 rounded-xl">
                         <option value="">Semua Tipe</option>
-                        <option value="teori">Teori</option>
+                        <option value="kelas">Kelas</option>
                         <option value="lab">Lab</option>
                         <option value="aula">Aula</option>
+                        <option value="ruang_rapat">Ruang Rapat</option>
+                        <option value="lainnya">Lainnya</option>
                     </select>
                 </div>
             </div>
@@ -135,9 +137,11 @@
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1.5">Tipe <span class="text-red-500">*</span></label>
                                     <select v-model="form.tipe" required class="block w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:ring-0 focus:border-primary-500">
-                                        <option value="teori">Teori</option>
+                                        <option value="kelas">Kelas</option>
                                         <option value="lab">Lab</option>
                                         <option value="aula">Aula</option>
+                                        <option value="ruang_rapat">Ruang Rapat</option>
+                                        <option value="lainnya">Lainnya</option>
                                     </select>
                                 </div>
                             </div>
@@ -242,18 +246,22 @@ const reloadData = () => {
 
 const getTipeClass = (tipe) => {
     const classes = {
-        teori: 'bg-blue-100 text-blue-600',
+        kelas: 'bg-blue-100 text-blue-600',
         lab: 'bg-green-100 text-green-600',
         aula: 'bg-purple-100 text-purple-600',
+        ruang_rapat: 'bg-amber-100 text-amber-600',
+        lainnya: 'bg-gray-100 text-gray-600',
     };
     return classes[tipe] || 'bg-gray-100 text-gray-600';
 };
 
 const getTipeBadge = (tipe) => {
     const classes = {
-        teori: 'bg-blue-100 text-blue-700',
+        kelas: 'bg-blue-100 text-blue-700',
         lab: 'bg-green-100 text-green-700',
         aula: 'bg-purple-100 text-purple-700',
+        ruang_rapat: 'bg-amber-100 text-amber-700',
+        lainnya: 'bg-gray-100 text-gray-700',
     };
     return classes[tipe] || 'bg-gray-100 text-gray-700';
 };
@@ -269,7 +277,7 @@ const openModal = (item = null) => {
         form.lantai = item.lantai || 1;
     } else {
         form.reset();
-        form.tipe = 'teori';
+        form.tipe = 'kelas';
         form.kapasitas = 30;
         form.lantai = 1;
     }

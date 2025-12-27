@@ -44,7 +44,7 @@ class RuanganController extends Controller
         $validated = $request->validate([
             'kode' => ['required', 'string', 'max:20', 'unique:ruangans,kode'],
             'nama' => ['required', 'string', 'max:255'],
-            'tipe' => ['required', 'in:teori,lab,aula'],
+            'tipe' => ['required', 'in:kelas,lab,aula,ruang_rapat,lainnya'],
             'kapasitas' => ['required', 'integer', 'min:1'],
             'gedung' => ['nullable', 'string', 'max:255'],
             'lantai' => ['nullable', 'integer', 'min:0'],
@@ -65,7 +65,7 @@ class RuanganController extends Controller
         $validated = $request->validate([
             'kode' => ['required', 'string', 'max:20', "unique:ruangans,kode,{$ruangan->id}"],
             'nama' => ['required', 'string', 'max:255'],
-            'tipe' => ['required', 'in:teori,lab,aula'],
+            'tipe' => ['required', 'in:kelas,lab,aula,ruang_rapat,lainnya'],
             'kapasitas' => ['required', 'integer', 'min:1'],
             'gedung' => ['nullable', 'string', 'max:255'],
             'lantai' => ['nullable', 'integer', 'min:0'],
