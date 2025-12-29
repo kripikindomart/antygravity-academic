@@ -10,6 +10,7 @@ use App\Models\Semester;
 use App\Models\Ruangan;
 use App\Models\TahunAkademik;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class KelasController extends Controller
@@ -366,6 +367,10 @@ class KelasController extends Controller
             'tanggal_selesai' => 'nullable|date',
             'dosen_id' => 'nullable|exists:dosens,id',
             'ruangan_id' => 'nullable|exists:ruangans,id',
+            'total_sesi' => 'nullable|integer|min:1',
+            'sesi_per_pertemuan' => 'nullable|integer|min:1',
+            'pertemuan_uts' => 'nullable|integer|min:1',
+            'pertemuan_uas' => 'nullable|integer|min:1',
         ]);
 
         $updateData = [];
@@ -379,6 +384,14 @@ class KelasController extends Controller
             $updateData['tanggal_mulai'] = \Carbon\Carbon::parse($validated['tanggal_mulai'])->format('Y-m-d');
         if (!empty($validated['tanggal_selesai']))
             $updateData['tanggal_selesai'] = \Carbon\Carbon::parse($validated['tanggal_selesai'])->format('Y-m-d');
+        if (!empty($validated['total_sesi']))
+            $updateData['total_sesi'] = $validated['total_sesi'];
+        if (!empty($validated['sesi_per_pertemuan']))
+            $updateData['sesi_per_pertemuan'] = $validated['sesi_per_pertemuan'];
+        if (!empty($validated['pertemuan_uts']))
+            $updateData['pertemuan_uts'] = $validated['pertemuan_uts'];
+        if (!empty($validated['pertemuan_uas']))
+            $updateData['pertemuan_uas'] = $validated['pertemuan_uas'];
 
         if (!empty($updateData)) {
             KelasMatakuliah::whereIn('id', $validated['ids'])->update($updateData);
@@ -460,6 +473,31 @@ class KelasController extends Controller
         $kelasMatakuliah->dosens()->create($validated);
 
         return response()->json(['message' => 'Dosen berhasil ditambahkan']);
+    }
+
+    public function updateDosenSesi(Request $request)
+    {
+        $validated = $request->validate([
+            'kelas_matakuliah_id' => 'required|exists:kelas_matakuliah,id',
+            'dosen_id' => 'required|exists:dosens,id',
+            'sesi_mulai' => 'nullable|integer',
+            'sesi_selesai' => 'nullable|integer',
+        ]);
+
+        $pivot = \App\Models\KelasMkDosen::where('kelas_matakuliah_id', $validated['kelas_matakuliah_id'])
+            ->where('dosen_id', $validated['dosen_id'])
+            ->firstOrFail();
+
+        $update = [];
+        if (array_key_exists('sesi_mulai', $validated))
+            $update['sesi_mulai'] = $validated['sesi_mulai'];
+        if (array_key_exists('sesi_selesai', $validated))
+            $update['sesi_selesai'] = $validated['sesi_selesai'];
+
+        if (!empty($update))
+            $pivot->update($update);
+
+        return response()->json(['message' => 'Sesi dosen update']);
     }
 
     /**
@@ -575,5 +613,167 @@ class KelasController extends Controller
         return response()->json([
             'message' => count($validated['mahasiswa_ids']) . ' mahasiswa berhasil dihapus dari kelas'
         ]);
+    }
+    /**
+     * Generate Jadwal Otomatis
+     */
+    public function generateJadwal(Kelas $kelas)
+    {
+        // 1. Load Dependencies
+        $kelas->load(['semester.tahunAkademik', 'kelasMatakuliahs.dosens.dosen', 'kelasMatakuliahs.ruangans', 'kelasMatakuliahs.mataKuliah']);
+
+        $tahunAkademik = $kelas->semester->tahunAkademik;
+        if (!$tahunAkademik || !$tahunAkademik->tanggal_mulai) {
+            return response()->json(['message' => 'Kalender Akademik tidak valid (Tanggal Mulai belum set)'], 422);
+        }
+
+        $startDate = \Carbon\Carbon::parse($tahunAkademik->tanggal_mulai);
+        $countGenerated = 0;
+
+        // Calculate online/offline ratio
+        $persenOnline = $kelas->persen_online ?? 0; // e.g., 30 means 30% online
+
+        foreach ($kelas->kelasMatakuliahs as $km) {
+            // Skip if no Hari/Jam set (Requirement: Manual First)
+            if (!$km->hari || !$km->jam_mulai)
+                continue;
+
+            // Find First Date
+            $currentDate = $startDate->copy();
+            $hariMap = [
+                'senin' => \Carbon\Carbon::MONDAY,
+                'selasa' => \Carbon\Carbon::TUESDAY,
+                'rabu' => \Carbon\Carbon::WEDNESDAY,
+                'kamis' => \Carbon\Carbon::THURSDAY,
+                'jumat' => \Carbon\Carbon::FRIDAY,
+                'sabtu' => \Carbon\Carbon::SATURDAY,
+                'minggu' => \Carbon\Carbon::SUNDAY,
+            ];
+            $targetDay = $hariMap[strtolower($km->hari)] ?? null;
+
+            if (!$targetDay)
+                continue;
+
+            // Jika hari ini != target, cari next target. 
+            if ($currentDate->dayOfWeekIso !== $targetDay) {
+                $currentDate->next($targetDay);
+            }
+
+            // Create/Find Header
+            $jadwal = \App\Models\Jadwal::firstOrCreate(
+                [
+                    'kelas_id' => $kelas->id,
+                    'mata_kuliah_id' => $km->mata_kuliah_id,
+                    'hari' => $km->hari,
+                    'jam_mulai' => substr($km->jam_mulai, 0, 5),
+                ],
+                [
+                    'jam_selesai' => substr($km->jam_selesai, 0, 5),
+                    'ruangan_id' => $km->ruangans->first()?->id,
+                    'semester_id' => $kelas->semester_id,
+                ]
+            );
+
+            // Clear existing for regeneration
+            $jadwal->pertemuans()->forceDelete();
+
+            $currentSesi = 1;
+            $mingguKe = 1;
+
+            $totalSesi = $km->total_sesi ?? 16;
+            $sesiPerPertemuan = $km->sesi_per_pertemuan ?? 1;
+
+            // Calculate how many meetings should be online
+            $totalPertemuan = (int) ceil($totalSesi / $sesiPerPertemuan);
+            $onlineMeetings = (int) round($totalPertemuan * $persenOnline / 100);
+
+            // Generate array of meeting indices that should be online (distributed evenly)
+            $onlineIndices = [];
+            if ($onlineMeetings > 0 && $totalPertemuan > 0) {
+                $step = $totalPertemuan / $onlineMeetings;
+                for ($i = 0; $i < $onlineMeetings; $i++) {
+                    $onlineIndices[] = (int) round($i * $step) + 1; // 1-indexed
+                }
+            }
+
+            while ($currentSesi <= $totalSesi) {
+                $rangeEnd = min($currentSesi + $sesiPerPertemuan - 1, $totalSesi);
+
+                // Determine Type
+                $tipe = 'kuliah';
+                $utsSesi = $km->pertemuan_uts ?? 8;
+                $uasSesi = $km->pertemuan_uas ?? 16;
+
+                if ($currentSesi <= $utsSesi && $rangeEnd >= $utsSesi)
+                    $tipe = 'uts';
+                elseif ($currentSesi <= $uasSesi && $rangeEnd >= $uasSesi)
+                    $tipe = 'uas';
+
+                // Determine Dosen based on sesi range (Team Teaching)
+                $dosenId = null;
+                foreach ($km->dosens as $dosenPivot) {
+                    $start = $dosenPivot->sesi_mulai ?? 1;
+                    $end = $dosenPivot->sesi_selesai ?? $totalSesi;
+
+                    if ($currentSesi >= $start && $currentSesi <= $end) {
+                        $dosenId = $dosenPivot->dosen_id;
+                        break;
+                    }
+                }
+                // Fallback: use first dosen if no match
+                if (!$dosenId && $km->dosens->count() > 0) {
+                    $dosenId = $km->dosens->first()->dosen_id;
+                }
+
+                // Determine Mode (online/offline)
+                $mode = in_array($mingguKe, $onlineIndices) ? 'online' : 'offline';
+
+                // Determine Ruangan for offline mode
+                $ruanganId = null;
+                if ($mode === 'offline') {
+                    $ruanganId = $km->ruangans->first()?->id;
+                }
+
+                \App\Models\JadwalPertemuan::create([
+                    'jadwal_id' => $jadwal->id,
+                    'pertemuan_ke' => $mingguKe,
+                    'tanggal' => $currentDate->format('Y-m-d'),
+                    'sesi_mulai' => $currentSesi,
+                    'sesi_selesai' => $rangeEnd,
+                    'tipe' => $tipe,
+                    'dosen_id' => $dosenId,
+                    'ruangan_id' => $ruanganId,
+                    'mode' => $mode,
+                    'status' => 'terjadwal',
+                    'catatan' => "Pertemuan Sesi $currentSesi-$rangeEnd",
+                ]);
+
+                // Next Iteration
+                $currentSesi = $rangeEnd + 1;
+                $mingguKe++;
+                $currentDate->addWeek();
+                $countGenerated++;
+            }
+        }
+
+        return response()->json(['message' => "Jadwal berhasil digenerate ($countGenerated pertemuan)"]);
+    }
+
+    /**
+     * Reset/Delete All Jadwal for Kelas
+     */
+    public function resetJadwal(Kelas $kelas)
+    {
+        // Use database transaction
+        DB::transaction(function () use ($kelas) {
+            // Get all jadwals
+            $jadwals = \App\Models\Jadwal::where('kelas_id', $kelas->id)->get();
+            foreach ($jadwals as $jadwal) {
+                $jadwal->pertemuans()->forceDelete();
+                $jadwal->delete(); // Soft delete header or force? Let's use delete() which is soft if trait exists
+            }
+        });
+
+        return back()->with('success', 'Semua jadwal berhasil dihapus');
     }
 }

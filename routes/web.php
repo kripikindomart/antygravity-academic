@@ -181,14 +181,33 @@ Route::middleware('auth')->group(function () {
         Route::post('/enroll-mahasiswa', [\App\Http\Controllers\KelasController::class, 'bulkEnrollMahasiswa'])->name('enroll-mahasiswa');
         Route::delete('/remove-mahasiswa/{mahasiswa}', [\App\Http\Controllers\KelasController::class, 'removeMahasiswa'])->name('remove-mahasiswa');
         Route::post('/bulk-remove-mahasiswa', [\App\Http\Controllers\KelasController::class, 'bulkRemoveMahasiswa'])->name('bulk-remove-mahasiswa');
+        Route::post('/generate-jadwal', [\App\Http\Controllers\KelasController::class, 'generateJadwal'])->name('generate-jadwal');
+        Route::delete('/reset-jadwal', [\App\Http\Controllers\KelasController::class, 'resetJadwal'])->name('reset-jadwal');
+        Route::get('/jadwals', [\App\Http\Controllers\JadwalPertemuanController::class, 'index'])->name('jadwals.index');
     });
     // Kelas MK routes
-    Route::put('/kelas-mk/{kelasMatakuliah}/jadwal', [\App\Http\Controllers\KelasController::class, 'updateMataKuliahJadwal'])->name('kelas-mk.jadwal');
+    Route::get('/kelas-mk/{kelasMatakuliah}/jadwal', [\App\Http\Controllers\JadwalPertemuanController::class, 'indexMk'])->name('kelas-mk.jadwal.index');
+    Route::put('/kelas-mk/{kelasMatakuliah}/jadwal', [\App\Http\Controllers\KelasController::class, 'updateMataKuliahJadwal'])->name('kelas-mk.jadwal'); // Existing Bulk Update
+
+    // Jadwal Pertemuan Resource (Updates & Deletes)
+    Route::put('/jadwal-pertemuan/{jadwalPertemuan}', [\App\Http\Controllers\JadwalPertemuanController::class, 'update'])->name('jadwal-pertemuan.update');
+    Route::delete('/jadwal-pertemuan/{jadwalPertemuan}', [\App\Http\Controllers\JadwalPertemuanController::class, 'destroy'])->name('jadwal-pertemuan.destroy');
+    Route::put('/jadwal-pertemuan-bulk', [\App\Http\Controllers\JadwalPertemuanController::class, 'bulkUpdate'])->name('jadwal-pertemuan.bulk-update');
+    Route::post('/jadwal-pertemuan/check-availability', [\App\Http\Controllers\JadwalPertemuanController::class, 'checkAvailability'])->name('jadwal-pertemuan.check-availability');
+    Route::get('/jadwal-pertemuan/date-availability', [\App\Http\Controllers\JadwalPertemuanController::class, 'getDateAvailability'])->name('jadwal-pertemuan.date-availability');
     Route::post('/kelas-mk/{kelasMatakuliah}/assign-dosen', [\App\Http\Controllers\KelasController::class, 'assignDosen'])->name('kelas-mk.assign-dosen');
     Route::delete('/kelas-mk/{kelasMatakuliah}/remove-dosen/{dosen}', [\App\Http\Controllers\KelasController::class, 'removeDosen'])->name('kelas-mk.remove-dosen');
     // Ruangan Preference
     Route::post('/kelas-mk/{kelasMatakuliah}/add-ruangan', [\App\Http\Controllers\KelasController::class, 'addRuangan'])->name('kelas-mk.add-ruangan');
     Route::delete('/kelas-mk/{kelasMatakuliah}/remove-ruangan/{ruanganId}', [\App\Http\Controllers\KelasController::class, 'removeRuangan'])->name('kelas-mk.remove-ruangan');
+    Route::post('/kelas-mk/update-dosen-sesi', [\App\Http\Controllers\KelasController::class, 'updateDosenSesi'])->name('kelas-mk.update-dosen-sesi');
+
+    // Pertemuan / Absensi Routes
+    Route::prefix('pertemuan/{pertemuan}')->name('pertemuan.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\JadwalPertemuanController::class, 'show'])->name('show');
+        Route::post('/absensi', [\App\Http\Controllers\JadwalPertemuanController::class, 'storeAbsensi'])->name('absensi.store');
+        Route::post('/jurnal', [\App\Http\Controllers\JadwalPertemuanController::class, 'storeJurnal'])->name('jurnal.store');
+    });
 
     // Dosen Module
     Route::resource('dosen', \App\Http\Controllers\DosenController::class)->except(['create', 'edit', 'show']);

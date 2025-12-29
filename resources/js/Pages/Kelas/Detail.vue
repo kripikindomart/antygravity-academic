@@ -29,7 +29,7 @@ const tabs = [
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'mk', name: 'Mata Kuliah', icon: BookOpenIcon },
     { id: 'mahasiswa', name: 'Mahasiswa', icon: UsersIcon },
-    { id: 'generate', name: 'Generate Jadwal', icon: SparklesIcon },
+    { id: 'jadwal', name: 'Jadwal & Absensi', icon: CalendarIcon },
 ];
 
 // Toast
@@ -361,6 +361,10 @@ const toggleRowSettings = (km) => {
             jam_selesai: km.jam_selesai || '',
             tanggal_mulai: km.tanggal_mulai || '',
             tanggal_selesai: km.tanggal_selesai || '',
+            total_sesi: km.total_sesi || 16,
+            sesi_per_pertemuan: km.sesi_per_pertemuan || 1,
+            pertemuan_uts: km.pertemuan_uts || 8,
+            pertemuan_uas: km.pertemuan_uas || 16,
             dosen_id: '',
         };
         dosenSearchQuery.value = '';
@@ -380,6 +384,10 @@ const saveRowSettings = async (kmId) => {
         if (rowSettings.value.jam_selesai) payload.jam_selesai = rowSettings.value.jam_selesai;
         if (rowSettings.value.tanggal_mulai) payload.tanggal_mulai = rowSettings.value.tanggal_mulai;
         if (rowSettings.value.tanggal_selesai) payload.tanggal_selesai = rowSettings.value.tanggal_selesai;
+        if (rowSettings.value.total_sesi) payload.total_sesi = rowSettings.value.total_sesi;
+        if (rowSettings.value.sesi_per_pertemuan) payload.sesi_per_pertemuan = rowSettings.value.sesi_per_pertemuan;
+        if (rowSettings.value.pertemuan_uts) payload.pertemuan_uts = rowSettings.value.pertemuan_uts;
+        if (rowSettings.value.pertemuan_uas) payload.pertemuan_uas = rowSettings.value.pertemuan_uas;
         
         await axios.post(route('kelas.bulk-update-mk', props.kelas.id), payload);
         showToast('Settings berhasil disimpan');
@@ -389,6 +397,19 @@ const saveRowSettings = async (kmId) => {
         showToast('Gagal menyimpan settings', 'error');
     } finally {
         isSavingRow.value = false;
+    }
+};
+
+const updateDosenSesi = async (kmId, dosenId, field, value) => {
+    try {
+        await axios.post(route('kelas-mk.update-dosen-sesi'), {
+            kelas_matakuliah_id: kmId,
+            dosen_id: dosenId,
+            [field]: value
+        });
+        // showToast('Jadwal dosen diperbarui'); // Optional, to avoid spam
+    } catch (e) {
+        showToast('Gagal update jadwal dosen', 'error');
     }
 };
 
@@ -601,21 +622,7 @@ const removeMk = async (mkId) => {
     }
 };
 
-// =============== TAB: GENERATE ===============
-const isGenerating = ref(false);
-const generateJadwal = async () => {
-    if (!confirm('Generate jadwal untuk semua MK di kelas ini?')) return;
-    isGenerating.value = true;
-    try {
-        await axios.post(route('kelas.generate-jadwal', props.kelas.id));
-        showToast('Jadwal berhasil di-generate!');
-        router.reload();
-    } catch (e) {
-        showToast(e.response?.data?.message || 'Gagal generate jadwal', 'error');
-    } finally {
-        isGenerating.value = false;
-    }
-};
+
 
 // =============== TAB: MAHASISWA ===============
 const mhsSearch = ref('');
@@ -800,6 +807,56 @@ const ruanganCount = computed(() => {
     });
     return uniqueIds.size;
 });
+
+const isGenerating = ref(false);
+const generateJadwal = async () => {
+    isGenerating.value = true;
+    try {
+        const response = await axios.post(route('kelas.generate-jadwal', props.kelas.id));
+        showToast(response.data.message || 'Jadwal berhasil digenerate');
+    } catch (e) {
+        showToast(e.response?.data?.message || 'Gagal generate jadwal', 'error');
+    } finally {
+        isGenerating.value = false;
+    }
+};
+
+// Jadwal & Absensi Logic
+const jadwals = ref([]);
+const isFetchingJadwals = ref(false);
+const fetchJadwals = async () => {
+    isFetchingJadwals.value = true;
+    try {
+        const { data } = await axios.get(route('kelas.jadwals.index', props.kelas.id));
+        jadwals.value = data;
+    } catch (e) {
+        showToast('Gagal memuat jadwal', 'error');
+    } finally {
+        isFetchingJadwals.value = false;
+    }
+};
+
+watch(activeTab, (val) => {
+    if (val === 'jadwal' && jadwals.value.length === 0) {
+        fetchJadwals();
+    }
+});
+
+// Reset Jadwal
+const resetJadwal = () => {
+    if (!confirm('Yakin ingin menghapus SEMUA jadwal kelas ini? Data kehadiran juga akan terhapus.')) return;
+    router.delete(route('kelas.reset-jadwal', props.kelas.id), {
+        onSuccess: () => {
+            jadwals.value = [];
+            showToast('Jadwal berhasil direset');
+        }
+    });
+};
+
+// View Schedule per MK (Navigate to dedicated page)
+const viewSchedule = (km) => {
+    router.visit(route('kelas-mk.jadwal.index', km.id));
+};
 </script>
 
 <template>
@@ -916,10 +973,18 @@ const ruanganCount = computed(() => {
                         <!-- Header -->
                         <div class="flex items-center justify-between">
                             <h3 class="text-lg font-bold text-gray-900">Mata Kuliah Terdaftar</h3>
-                            <button @click="openAddModal" 
-                                class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 shadow-lg shadow-indigo-200">
-                                <PlusIcon class="w-5 h-5" /> Tambah MK
-                            </button>
+                            <div class="flex items-center gap-3">
+                                <button @click="generateJadwal" :disabled="isGenerating"
+                                    class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 flex items-center gap-2 disabled:opacity-70">
+                                    <SparklesIcon v-if="!isGenerating" class="w-5 h-5" />
+                                    <span v-else class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                                    {{ isGenerating ? 'Generating...' : 'Generate Jadwal' }}
+                                </button>
+                                <button @click="openAddModal" 
+                                    class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 shadow-lg shadow-indigo-200">
+                                    <PlusIcon class="w-5 h-5" /> Tambah MK
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Bulk Actions Bar -->
@@ -1050,6 +1115,9 @@ const ruanganCount = computed(() => {
                                             </td>
                                             <td class="px-4 py-3 text-center">
                                                 <div class="flex items-center justify-center gap-1">
+                                                    <button @click="viewSchedule(km)" class="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Lihat Jadwal">
+                                                        <CalendarIcon class="w-4 h-4" />
+                                                    </button>
                                                     <button @click="toggleRowSettings(km)" 
                                                         :class="['p-1.5 rounded-lg transition', expandedRowId === km.id ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50']">
                                                         <Cog6ToothIcon class="w-4 h-4" />
@@ -1103,18 +1171,44 @@ const ruanganCount = computed(() => {
                                                         </div>
                                                     </div>
                                                     
+                                                    <!-- Row 1.5: Config Sesi & Rapel -->
+                                                    <div class="grid grid-cols-4 gap-4 bg-white p-3 rounded-lg border border-indigo-100">
+                                                        <div>
+                                                            <label class="block text-xs font-semibold text-gray-600 mb-1">Total Sesi</label>
+                                                            <input type="number" v-model="rowSettings.total_sesi" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-xs font-semibold text-gray-600 mb-1">Sesi / Pertemuan</label>
+                                                            <input type="number" v-model="rowSettings.sesi_per_pertemuan" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="1">
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-xs font-semibold text-gray-600 mb-1">Sesi UTS</label>
+                                                            <input type="number" v-model="rowSettings.pertemuan_uts" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-xs font-semibold text-gray-600 mb-1">Sesi UAS</label>
+                                                            <input type="number" v-model="rowSettings.pertemuan_uas" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                                                        </div>
+                                                    </div>
+
                                                     <!-- Row 2: Dosen Team Teaching -->
-                                                    <div>
+                                                    <div class="mt-4">
                                                         <label class="block text-xs font-semibold text-gray-600 mb-2">Dosen Team Teaching</label>
                                                         <!-- Existing Dosens -->
-                                                        <div v-if="km.dosens?.length" class="flex flex-wrap gap-2 mb-3">
-                                                            <span v-for="dd in km.dosens" :key="dd.id" 
-                                                                class="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm flex items-center gap-2">
-                                                                {{ dd.dosen?.nama }}
-                                                                <button @click="removeDosenFromMk(km.id, dd.dosen_id)" class="text-purple-400 hover:text-red-500">
+                                                        <div v-if="km.dosens?.length" class="space-y-2 mb-3">
+                                                            <div v-for="dd in km.dosens" :key="dd.id" 
+                                                                class="p-2 bg-purple-50 text-purple-900 rounded-lg text-sm flex items-center gap-3 border border-purple-100">
+                                                                <span class="flex-1 font-semibold truncate">{{ dd.dosen?.nama }}</span>
+                                                                <div class="flex items-center gap-1 bg-white px-2 py-1 rounded border border-purple-100 shadow-sm">
+                                                                    <span class="text-xs text-purple-600 font-medium">Sesi</span>
+                                                                    <input type="number" v-model="dd.sesi_mulai" @change="updateDosenSesi(km.id, dd.dosen_id, 'sesi_mulai', $event.target.value)" class="w-10 h-6 text-xs px-1 text-center border border-gray-200 rounded focus:ring-purple-500 focus:border-purple-500 p-0" placeholder="1">
+                                                                    <span class="text-xs text-gray-400">-</span>
+                                                                    <input type="number" v-model="dd.sesi_selesai" @change="updateDosenSesi(km.id, dd.dosen_id, 'sesi_selesai', $event.target.value)" class="w-10 h-6 text-xs px-1 text-center border border-gray-200 rounded focus:ring-purple-500 focus:border-purple-500 p-0" placeholder="16">
+                                                                </div>
+                                                                <button @click="removeDosenFromMk(km.id, dd.dosen_id)" class="text-purple-400 hover:text-red-500 p-1 hover:bg-purple-100 rounded">
                                                                     <XMarkIcon class="w-4 h-4" />
                                                                 </button>
-                                                            </span>
+                                                            </div>
                                                         </div>
                                                         <!-- Add Dosen with Search -->
                                                         <div class="flex gap-2">
@@ -1327,37 +1421,75 @@ const ruanganCount = computed(() => {
                         </div>
                     </div>
 
-                    <!-- =============== TAB: GENERATE =============== -->
-                    <div v-show="activeTab === 'generate'" class="p-6 space-y-6">
-                        <div class="grid grid-cols-3 gap-5">
-                            <div class="bg-purple-50 rounded-2xl p-5 border border-purple-100 text-center">
-                                <div class="text-4xl font-black text-purple-600">{{ mkCount }}</div>
-                                <div class="text-purple-700 font-semibold">Mata Kuliah</div>
-                            </div>
-                            <div class="bg-amber-50 rounded-2xl p-5 border border-amber-100 text-center">
-                                <div class="text-4xl font-black text-amber-600">{{ mhsCount }}</div>
-                                <div class="text-amber-700 font-semibold">Mahasiswa</div>
-                            </div>
-                            <div class="bg-emerald-50 rounded-2xl p-5 border border-emerald-100 text-center">
-                                <div class="text-4xl font-black text-emerald-600">{{ ruanganCount }}</div>
-                                <div class="text-emerald-700 font-semibold">Ruangan</div>
-                            </div>
+                    <!-- =============== TAB: JADWAL =============== -->
+                    <div v-show="activeTab === 'jadwal'" class="p-6">
+                        <div v-if="jadwals.length === 0 && !isFetchingJadwals" class="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
+                             <CalendarIcon class="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                             <h3 class="text-lg font-bold text-gray-600">Belum ada jadwal</h3>
+                             <p class="text-gray-400">Silakan generate jadwal di tab Mata Kuliah.</p>
                         </div>
-
-                        <div v-if="mkCount === 0" class="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center gap-4">
-                            <ExclamationTriangleIcon class="w-8 h-8 text-amber-500" />
-                            <div>
-                                <div class="font-bold text-amber-800">Mata Kuliah kosong</div>
-                                <div class="text-amber-700">Tambahkan Mata Kuliah terlebih dahulu</div>
+                        
+                        <div v-else class="space-y-4">
+                            <!-- Header with Reset -->
+                            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                <div class="flex items-center gap-2">
+                                     <h3 class="font-bold text-gray-700">Total: {{ jadwals.length }} Pertemuan</h3>
+                                </div>
+                                <button @click="resetJadwal" class="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition shadow-sm flex items-center gap-2">
+                                    <TrashIcon class="w-4 h-4" /> Reset Semua Jadwal
+                                </button>
                             </div>
-                        </div>
+                             <!-- Loading State -->
+                             <div v-if="isFetchingJadwals" class="text-center py-12">
+                                 <span class="loading loading-dots loading-lg text-indigo-600"></span>
+                             </div>
 
-                        <button @click="generateJadwal" :disabled="isGenerating || mkCount === 0"
-                            class="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-lg 
-                                   hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 shadow-lg shadow-indigo-200 flex items-center justify-center gap-3">
-                            <SparklesIcon class="w-7 h-7" />
-                            {{ isGenerating ? 'Generating...' : 'Generate Jadwal Otomatis' }}
-                        </button>
+                             <!-- List Jadwal -->
+                             <div v-else class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                 <table class="w-full">
+                                     <thead class="bg-gray-50 border-b border-gray-200">
+                                         <tr>
+                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Pert.</th>
+                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Tanggal</th>
+                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Mata Kuliah</th>
+                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Dosen / Materi</th>
+                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
+                                             <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Aksi</th>
+                                         </tr>
+                                     </thead>
+                                     <tbody class="divide-y divide-gray-100">
+                                         <tr v-for="j in jadwals" :key="j.id" class="hover:bg-gray-50 transition">
+                                             <td class="px-6 py-4 font-bold text-gray-900">{{ j.pertemuan_ke }}</td>
+                                             <td class="px-6 py-4">
+                                                 <div class="font-semibold text-gray-900">{{ formatDate(j.tanggal) }}</div>
+                                                 <div class="text-xs text-gray-500">{{ j.jadwal?.hari }} {{ j.jadwal?.jam_mulai }}</div>
+                                             </td>
+                                             <td class="px-6 py-4">
+                                                 <div class="font-bold text-gray-800 text-sm">{{ j.jadwal?.mata_kuliah?.nama || 'Unknown' }}</div>
+                                                 <div class="text-xs text-gray-500">{{ j.jadwal?.mata_kuliah?.kode }}</div>
+                                             </td>
+                                             <td class="px-6 py-4">
+                                                 <div class="font-medium text-gray-900">{{ j.dosen?.nama_gelar || '-' }}</div>
+                                                 <div class="text-sm text-gray-500 truncate max-w-xs">{{ j.jurnal?.materi || 'Belum ada materi' }}</div>
+                                             </td>
+                                              <td class="px-6 py-4">
+                                                 <span :class="['px-2 py-1 rounded-lg text-xs font-bold', 
+                                                     j.status === 'Selesai' ? 'bg-green-100 text-green-700' : 
+                                                     j.status === 'Terjadwal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600']">
+                                                     {{ j.status }}
+                                                 </span>
+                                             </td>
+                                             <td class="px-6 py-4 text-right">
+                                                 <Link :href="route('pertemuan.show', j.id)" 
+                                                     class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 inline-flex items-center gap-1">
+                                                     <PencilIcon class="w-4 h-4" /> Absensi
+                                                 </Link>
+                                             </td>
+                                         </tr>
+                                     </tbody>
+                                 </table>
+                             </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1717,6 +1849,7 @@ const ruanganCount = computed(() => {
                 </div>
             </Transition>
         </Teleport>
+
 
         <!-- Toast -->
         <Teleport to="body">

@@ -24,6 +24,6 @@ Homestead.yaml
 Thumbs.db
 
 # Database schema - private
-/database/migrations/
+# /database/migrations/
 /database/seeders/
 

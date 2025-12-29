@@ -42,6 +42,8 @@ class Dosen extends Model
         'is_dosen_luar' => 'boolean',
     ];
 
+    protected $appends = ['nama_gelar'];
+
     // Relationships
     public function user(): BelongsTo
     {
@@ -59,6 +61,18 @@ class Dosen extends Model
     }
 
     // Accessors
+    public function getNamaGelarAttribute(): string
+    {
+        $nama = $this->nama ?? '';
+        if ($this->gelar_depan) {
+            $nama = $this->gelar_depan . ' ' . $nama;
+        }
+        if ($this->gelar_belakang) {
+            $nama .= ', ' . $this->gelar_belakang;
+        }
+        return trim($nama);
+    }
+
     public function getNamaLengkapAttribute(): string
     {
         $nama = $this->nama;
