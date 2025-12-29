@@ -25,9 +25,18 @@ class KelasController extends Controller
         $userProdiIds = $user->prodis()->pluck('program_studis.id')->toArray();
         $isStaffProdi = $user->hasRole('staff_prodi') && count($userProdiIds) > 0;
 
+        // Check if user is mahasiswa
+        $isMahasiswa = $user->hasRole('mahasiswa');
+        $mahasiswaProdiId = null;
+        if ($isMahasiswa) {
+            $mahasiswa = \App\Models\Mahasiswa::where('user_id', $user->id)->first();
+            $mahasiswaProdiId = $mahasiswa?->prodi_id;
+        }
+
         // Apply default filters if not set
         $semesterId = $request->semester_id ?? $activeSemester?->id;
-        $prodiId = $request->prodi_id ?? ($isStaffProdi ? $userProdiIds[0] : null);
+        $defaultProdiId = $isMahasiswa ? $mahasiswaProdiId : ($isStaffProdi ? $userProdiIds[0] : null);
+        $prodiId = $request->prodi_id ?? $defaultProdiId;
 
         $query = Kelas::query()
             ->with(['semester.tahunAkademik', 'prodi', 'mataKuliahs'])
@@ -41,13 +50,18 @@ class KelasController extends Controller
             ->when($semesterId, fn($q, $id) => $q->where('semester_id', $id))
             ->when($prodiId, fn($q, $id) => $q->where('prodi_id', $id))
             ->when($isStaffProdi && !$prodiId, fn($q) => $q->whereIn('prodi_id', $userProdiIds))
+            ->when($isMahasiswa && $mahasiswaProdiId, fn($q) => $q->where('prodi_id', $mahasiswaProdiId))
             ->when($request->status, fn($q, $s) => $q->where('status', $s))
             ->latest();
 
-        // Get prodis list (limited to user's prodis for staff_prodi)
-        $prodis = $isStaffProdi
-            ? ProgramStudi::whereIn('id', $userProdiIds)->orderBy('nama')->get()
-            : ProgramStudi::orderBy('nama')->get();
+        // Get prodis list (limited based on role)
+        if ($isMahasiswa && $mahasiswaProdiId) {
+            $prodis = ProgramStudi::where('id', $mahasiswaProdiId)->get();
+        } elseif ($isStaffProdi) {
+            $prodis = ProgramStudi::whereIn('id', $userProdiIds)->orderBy('nama')->get();
+        } else {
+            $prodis = ProgramStudi::orderBy('nama')->get();
+        }
 
         // Get kurikulums and MKs for modal (create new kelas)
         $kurikulums = \App\Models\Kurikulum::with('prodi')->orderBy('nama')->get();

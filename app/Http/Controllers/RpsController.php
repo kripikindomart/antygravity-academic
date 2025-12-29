@@ -16,11 +16,20 @@ class RpsController extends Controller
     {
         // Get Active Semester/TA
         $activeTa = TahunAkademik::where('is_active', true)->first();
-        // If no active TA, fallback (should not happen usually)
+        $user = auth()->user();
 
-        // Get Active Kurikulums for this TA?
-        // Logic: Get all MKs from Active Kurikulums.
-        // For simplicity, let's just list all MKs generally or filter by Prodi if user is Kaprodi.
+        // Determine prodi restrictions based on role
+        $prodiIds = null;
+        if ($user->hasRole('mahasiswa')) {
+            $mahasiswa = \App\Models\Mahasiswa::where('user_id', $user->id)->first();
+            $prodiIds = $mahasiswa ? [$mahasiswa->prodi_id] : [];
+        } elseif ($user->hasRole('staff_prodi')) {
+            $prodiIds = $user->prodis()->pluck('program_studis.id')->toArray();
+        } elseif ($user->hasRole('dosen')) {
+            // Dosen sees MKs they are assigned to (via kelas_mk_dosen) or all for now
+            // For simplicity, we'll show all MKs - can be refined later
+            $prodiIds = null;
+        }
 
         $query = MataKuliah::query()
             ->with([
@@ -32,14 +41,30 @@ class RpsController extends Controller
             ->when($request->search, function ($q, $search) {
                 $q->where('nama', 'like', "%{$search}%")
                     ->orWhere('kode', 'like', "%{$search}%");
+            })
+            ->when($prodiIds !== null, function ($q) use ($prodiIds) {
+                $q->whereIn('prodi_id', $prodiIds);
+            })
+            ->when($request->prodi_id, function ($q, $prodiId) {
+                $q->where('prodi_id', $prodiId);
             });
-
-        // TODO: Filter by Dosen Access if Login is Dosen
 
         $mataKuliahs = $query->paginate(10)->withQueryString();
 
+        // Get prodis for filter dropdown
+        if ($prodiIds !== null && count($prodiIds) > 0) {
+            $prodis = \App\Models\ProgramStudi::whereIn('id', $prodiIds)->orderBy('nama')->get();
+        } else {
+            $prodis = \App\Models\ProgramStudi::orderBy('nama')->get();
+        }
+
         return Inertia::render('Rps/Index', [
             'mataKuliahs' => $mataKuliahs,
+            'prodis' => $prodis,
+            'filters' => [
+                'search' => $request->search,
+                'prodi_id' => $request->prodi_id,
+            ],
         ]);
     }
 
