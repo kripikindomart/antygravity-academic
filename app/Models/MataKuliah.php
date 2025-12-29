@@ -62,7 +62,6 @@ class MataKuliah extends Model
     public function kurikulums()
     {
         return $this->belongsToMany(Kurikulum::class, 'kurikulum_mata_kuliah')
-            ->withPivot('semester_rekomendasi')
             ->withTimestamps();
     }
 
@@ -72,5 +71,21 @@ class MataKuliah extends Model
     public function getTotalSksAttribute()
     {
         return $this->sks_teori + $this->sks_praktik;
+    }
+
+    /**
+     * Get the latest RPS for the mata kuliah.
+     */
+    public function rps()
+    {
+        return $this->hasOne(Rps::class)->latestOfMany();
+    }
+
+    /**
+     * Get the CPMKs for the mata kuliah.
+     */
+    public function cpmks()
+    {
+        return $this->hasMany(Cpmk::class, 'mata_kuliah_id');
     }
 }

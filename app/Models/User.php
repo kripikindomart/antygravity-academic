@@ -28,6 +28,7 @@ class User extends Authenticatable
         'birth_date',
         'birth_place',
         'is_active',
+        'openai_api_key',
     ];
 
     /**
@@ -38,6 +39,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'openai_api_key', // Hide from array/JSON by default
     ];
 
     /**
@@ -52,6 +54,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'birth_date' => 'date',
             'is_active' => 'boolean',
+            'openai_api_key' => 'encrypted',
         ];
     }
 

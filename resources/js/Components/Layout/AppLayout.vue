@@ -128,6 +128,11 @@
                 </div>
             </header>
             
+            <!-- Page Header Slot -->
+            <div v-if="$slots.header" class="px-4 lg:px-8 py-6 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+                <slot name="header" />
+            </div>
+            
             <!-- Page Content -->
             <main class="flex-1 p-4 lg:p-8">
                 <slot />

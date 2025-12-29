@@ -146,4 +146,68 @@ Route::middleware('auth')->group(function () {
         // Duplicate Kurikulum
         Route::post('/{kurikulum}/duplicate', [\App\Http\Controllers\KurikulumController::class, 'duplicate'])->name('duplicate')->middleware('permission:kurikulum.create');
     });
+
+    // RPS Module - parameter set to 'rps' to match controller $rps variable
+    Route::resource('rps', \App\Http\Controllers\RpsController::class)->parameters(['rps' => 'rps']);
+    // AI RPS Generator
+    Route::post('/ai/settings', [App\Http\Controllers\AiRpsController::class, 'storeSettings'])->name('ai.settings');
+    Route::post('/ai/generate-rps', [App\Http\Controllers\AiRpsController::class, 'generate'])->name('ai.generate-rps');
+    Route::post('/ai/generate-rps-full', [App\Http\Controllers\AiRpsController::class, 'generateFull'])->name('ai.generate-rps-full');
+    Route::post('/ai/generate-complete', [App\Http\Controllers\AiRpsController::class, 'generateComplete'])->name('ai.generate-complete');
+    Route::post('/sub-cpmk', [\App\Http\Controllers\SubCpmkController::class, 'store'])->name('sub-cpmk.store');
+
+    // RPS PDF Export
+    Route::get('/rps/{rps}/pdf', [\App\Http\Controllers\RpsPdfController::class, 'generate'])->name('rps.pdf');
+    Route::get('/rps/{rps}/pdf/preview', [\App\Http\Controllers\RpsPdfController::class, 'preview'])->name('rps.pdf.preview');
+
+    // RPS Submit/Approve Workflow
+    Route::post('/rps/{rps}/submit', [\App\Http\Controllers\RpsController::class, 'submit'])->name('rps.submit');
+    Route::post('/rps/{rps}/approve', [\App\Http\Controllers\RpsController::class, 'approve'])->name('rps.approve');
+    Route::post('/rps/{rps}/reject', [\App\Http\Controllers\RpsController::class, 'reject'])->name('rps.reject');
+
+    // Kelas Module
+    Route::resource('kelas', \App\Http\Controllers\KelasController::class)->parameters(['kelas' => 'kelas']);
+    Route::post('/kelas/bulk-destroy', [\App\Http\Controllers\KelasController::class, 'bulkDestroy'])->name('kelas.bulk-destroy');
+    Route::prefix('kelas/{kelas}')->name('kelas.')->group(function () {
+        // Mata Kuliah Assignment
+        Route::post('/assign-mk', [\App\Http\Controllers\KelasController::class, 'assignMataKuliah'])->name('assign-mk');
+        Route::delete('/remove-mk/{mataKuliah}', [\App\Http\Controllers\KelasController::class, 'removeMataKuliah'])->name('remove-mk');
+        Route::post('/bulk-update-mk', [\App\Http\Controllers\KelasController::class, 'bulkUpdateMk'])->name('bulk-update-mk');
+        Route::post('/bulk-remove-mk', [\App\Http\Controllers\KelasController::class, 'bulkRemoveMk'])->name('bulk-remove-mk');
+        // Ruangan
+        Route::post('/sync-ruangan', [\App\Http\Controllers\KelasController::class, 'syncRuangan'])->name('sync-ruangan');
+    });
+    // Kelas MK routes
+    Route::put('/kelas-mk/{kelasMatakuliah}/jadwal', [\App\Http\Controllers\KelasController::class, 'updateMataKuliahJadwal'])->name('kelas-mk.jadwal');
+    Route::post('/kelas-mk/{kelasMatakuliah}/assign-dosen', [\App\Http\Controllers\KelasController::class, 'assignDosen'])->name('kelas-mk.assign-dosen');
+    Route::delete('/kelas-mk/{kelasMatakuliah}/remove-dosen/{dosen}', [\App\Http\Controllers\KelasController::class, 'removeDosen'])->name('kelas-mk.remove-dosen');
+
+    // Dosen Module
+    Route::resource('dosen', \App\Http\Controllers\DosenController::class)->except(['create', 'edit', 'show']);
+    Route::prefix('dosen')->name('dosen.')->group(function () {
+        Route::post('/bulk-destroy', [\App\Http\Controllers\DosenController::class, 'bulkDestroy'])->name('bulk-destroy');
+        Route::post('/bulk-restore', [\App\Http\Controllers\DosenController::class, 'bulkRestore'])->name('bulk-restore');
+        Route::post('/bulk-force-delete', [\App\Http\Controllers\DosenController::class, 'bulkForceDelete'])->name('bulk-force-delete');
+        Route::post('/{dosen}/restore', [\App\Http\Controllers\DosenController::class, 'restore'])->name('restore')->withTrashed();
+        Route::delete('/{dosen}/force-delete', [\App\Http\Controllers\DosenController::class, 'forceDelete'])->name('force-delete')->withTrashed();
+        Route::post('/{dosen}/create-account', [\App\Http\Controllers\DosenController::class, 'createAccount'])->name('create-account');
+        Route::post('/bulk-create-account', [\App\Http\Controllers\DosenController::class, 'bulkCreateAccount'])->name('bulk-create-account');
+        Route::post('/import', [\App\Http\Controllers\DosenController::class, 'import'])->name('import');
+        Route::get('/download-template', [\App\Http\Controllers\DosenController::class, 'downloadTemplate'])->name('download-template');
+    });
+
+    // Mahasiswa Module
+    Route::resource('mahasiswa', \App\Http\Controllers\MahasiswaController::class)->except(['create', 'edit', 'show']);
+    Route::prefix('mahasiswa')->name('mahasiswa.')->group(function () {
+        Route::post('/bulk-destroy', [\App\Http\Controllers\MahasiswaController::class, 'bulkDestroy'])->name('bulk-destroy');
+        Route::post('/bulk-restore', [\App\Http\Controllers\MahasiswaController::class, 'bulkRestore'])->name('bulk-restore');
+        Route::post('/bulk-force-delete', [\App\Http\Controllers\MahasiswaController::class, 'bulkForceDelete'])->name('bulk-force-delete');
+        Route::post('/{mahasiswa}/restore', [\App\Http\Controllers\MahasiswaController::class, 'restore'])->name('restore')->withTrashed();
+        Route::delete('/{mahasiswa}/force-delete', [\App\Http\Controllers\MahasiswaController::class, 'forceDelete'])->name('force-delete')->withTrashed();
+        Route::post('/{mahasiswa}/create-account', [\App\Http\Controllers\MahasiswaController::class, 'createAccount'])->name('create-account');
+        Route::post('/bulk-create-account', [\App\Http\Controllers\MahasiswaController::class, 'bulkCreateAccount'])->name('bulk-create-account');
+        Route::post('/bulk-update-semester', [\App\Http\Controllers\MahasiswaController::class, 'bulkUpdateSemester'])->name('bulk-update-semester');
+        Route::post('/import', [\App\Http\Controllers\MahasiswaController::class, 'import'])->name('import');
+        Route::get('/download-template', [\App\Http\Controllers\MahasiswaController::class, 'downloadTemplate'])->name('download-template');
+    });
 });

@@ -4,6 +4,8 @@ import '../css/app.css';
 import { createApp, h } from 'vue';
 import { createInertiaApp, Head, Link } from '@inertiajs/vue3';
 
+import { ZiggyVue } from 'ziggy-js';
+
 createInertiaApp({
     title: (title) => `${title} - SIAKAD Pascasarjana UIKA`,
     resolve: (name) => {
@@ -13,6 +15,7 @@ createInertiaApp({
     setup({ el, App, props, plugin }) {
         createApp({ render: () => h(App, props) })
             .use(plugin)
+            .use(ZiggyVue)
             .component('Head', Head)
             .component('Link', Link)
             .mount(el);

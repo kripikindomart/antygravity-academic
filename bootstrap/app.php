@@ -14,7 +14,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             HandleInertiaRequests::class,
+            \App\Http\Middleware\SanitizeInput::class,
         ]);
+
+        // Trust all proxies (Cloudflare Tunnel)
+        $middleware->trustProxies(at: '*');
+
+        // Force HTTPS scheme when APP_URL uses https
+        $appUrl = env('APP_URL', 'http://localhost');
+        if (str_starts_with($appUrl, 'https://')) {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
 
         // Register Spatie permission middleware aliases
         $middleware->alias([
