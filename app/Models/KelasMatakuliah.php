@@ -46,6 +46,11 @@ class KelasMatakuliah extends Model
         return $this->belongsTo(MataKuliah::class);
     }
 
+    public function ruangans(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Ruangan::class, 'kelas_mk_ruangan');
+    }
+
     public function dosens(): HasMany
     {
         return $this->hasMany(KelasMkDosen::class, 'kelas_matakuliah_id');

@@ -176,11 +176,19 @@ Route::middleware('auth')->group(function () {
         Route::post('/bulk-remove-mk', [\App\Http\Controllers\KelasController::class, 'bulkRemoveMk'])->name('bulk-remove-mk');
         // Ruangan
         Route::post('/sync-ruangan', [\App\Http\Controllers\KelasController::class, 'syncRuangan'])->name('sync-ruangan');
+        // Mahasiswa Enrollment
+        Route::get('/enroll-candidates', [\App\Http\Controllers\KelasController::class, 'searchCandidates'])->name('enroll-candidates');
+        Route::post('/enroll-mahasiswa', [\App\Http\Controllers\KelasController::class, 'bulkEnrollMahasiswa'])->name('enroll-mahasiswa');
+        Route::delete('/remove-mahasiswa/{mahasiswa}', [\App\Http\Controllers\KelasController::class, 'removeMahasiswa'])->name('remove-mahasiswa');
+        Route::post('/bulk-remove-mahasiswa', [\App\Http\Controllers\KelasController::class, 'bulkRemoveMahasiswa'])->name('bulk-remove-mahasiswa');
     });
     // Kelas MK routes
     Route::put('/kelas-mk/{kelasMatakuliah}/jadwal', [\App\Http\Controllers\KelasController::class, 'updateMataKuliahJadwal'])->name('kelas-mk.jadwal');
     Route::post('/kelas-mk/{kelasMatakuliah}/assign-dosen', [\App\Http\Controllers\KelasController::class, 'assignDosen'])->name('kelas-mk.assign-dosen');
     Route::delete('/kelas-mk/{kelasMatakuliah}/remove-dosen/{dosen}', [\App\Http\Controllers\KelasController::class, 'removeDosen'])->name('kelas-mk.remove-dosen');
+    // Ruangan Preference
+    Route::post('/kelas-mk/{kelasMatakuliah}/add-ruangan', [\App\Http\Controllers\KelasController::class, 'addRuangan'])->name('kelas-mk.add-ruangan');
+    Route::delete('/kelas-mk/{kelasMatakuliah}/remove-ruangan/{ruanganId}', [\App\Http\Controllers\KelasController::class, 'removeRuangan'])->name('kelas-mk.remove-ruangan');
 
     // Dosen Module
     Route::resource('dosen', \App\Http\Controllers\DosenController::class)->except(['create', 'edit', 'show']);
