@@ -108,7 +108,17 @@ class KurikulumController extends Controller
      */
     public function show(Kurikulum $kurikulum)
     {
-        $kurikulum->load(['prodi', 'cpls.cpmks.mataKuliah', 'cpls.cpmks.subCpmks', 'mataKuliahs', 'profilLulusans.cpls']); // withPivot semester handled in model relation?
+        $kurikulum->load([
+            'prodi',
+            'cpls.cpmks.mataKuliah',
+            'cpls.cpmks.subCpmks',
+            'mataKuliahs.cpmks' => function ($query) use ($kurikulum) {
+                $query->whereHas('cpl', function ($q2) use ($kurikulum) {
+                    $q2->where('kurikulum_id', $kurikulum->id);
+                });
+            },
+            'profilLulusans.cpls'
+        ]);
 
         return Inertia::render('Kurikulum/Show', [
             'kurikulum' => $kurikulum,

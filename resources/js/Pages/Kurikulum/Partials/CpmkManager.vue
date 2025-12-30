@@ -5,9 +5,17 @@
                 <h3 class="font-bold text-lg dark:text-white">Kelola CPMK - {{ mataKuliah.nama }}</h3>
                 <p class="text-sm text-gray-500">{{ mataKuliah.kode }} • Semester {{ mataKuliah.semester }}</p>
             </div>
-            <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
+            <div class="flex items-center gap-2">
+                <button @click="generateAI" :disabled="isGeneratingAI" 
+                    class="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold rounded-lg hover:from-purple-700 hover:to-indigo-700 transition shadow disabled:opacity-50">
+                    <svg v-if="isGeneratingAI" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                    <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    {{ isGeneratingAI ? 'Generating...' : '✨ Generate AI' }}
+                </button>
+                <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
         </div>
 
         <div v-if="isLoading" class="py-8 text-center">
@@ -48,7 +56,17 @@
                             </td>
                             <td class="p-2 border-r border-gray-100 dark:border-gray-700 align-top">
                                 <textarea v-if="cpmk.isEditing" v-model="cpmk.editData.deskripsi" rows="2" class="w-full px-2 py-1 text-sm border-gray-300 rounded focus:ring-indigo-500 resize-none"></textarea>
-                                <p v-else class="px-2 line-clamp-3">{{ cpmk.deskripsi }}</p>
+                                <p v-else class="px-2">{{ cpmk.deskripsi }}</p>
+                                <!-- Sub CPMK Display -->
+                                <div v-if="!cpmk.isEditing && cpmk.sub_cpmks && cpmk.sub_cpmks.length > 0" class="mt-2 mx-2 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
+                                    <p class="font-bold mb-1 text-slate-700 dark:text-slate-300">Sub-CPMK:</p>
+                                    <ul class="space-y-1">
+                                        <li v-for="sub in cpmk.sub_cpmks" :key="sub.id" class="flex gap-2">
+                                            <span class="font-mono font-semibold bg-white dark:bg-slate-800 px-1 rounded border border-slate-200 dark:border-slate-700 text-[10px] h-fit">{{ sub.kode }}</span>
+                                            <span>{{ sub.deskripsi }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
                             </td>
 
                             <!-- CPL Checkbox Matrix (Single Choice Behavior) -->
@@ -126,7 +144,7 @@
                 </table>
             </div>
 
-            <button v-if="!isAddingNew" @click="startAdd" class="flex items-center gap-2 text-indigo-600 font-bold text-sm hover:underline px-2">
+            <button @click="startAdd" class="flex items-center gap-2 text-indigo-600 font-bold text-sm hover:underline px-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                 Tambah Baris CPMK
             </button>
@@ -173,12 +191,14 @@ const props = defineProps({
     availableCpls: Array,
 });
 
-const emit = defineEmits(['close', 'toast']);
+const emit = defineEmits(['close', 'toast', 'updated']);
 
 const cpmks = ref([]);
 const isLoading = ref(true);
 const isSaving = ref(false);
 const isAddingNew = ref(false);
+const isGeneratingAI = ref(false);
+const pendingNewRows = ref([]); // For multiple new rows
 const focusInput = ref(null);
 
 const newForm = ref({ kode: '', deskripsi: '', cpl_id: null, bobot: 0 });
@@ -216,12 +236,40 @@ const saveNew = async () => {
         const payload = { ...newForm.value, mata_kuliah_id: props.mataKuliah.id };
         const response = await axios.post('/kurikulum/cpmk', payload);
         cpmks.value.push({ ...response.data.cpmk, isEditing: false, editData: {} });
-        isAddingNew.value = false;
+        // Reset form for next entry (keep form open for multi-row add)
+        newForm.value = { kode: '', deskripsi: '', cpl_id: newForm.value.cpl_id, bobot: 0 };
         emit('toast', 'CPMK ditambahkan', 'success');
+        emit('updated');
     } catch (error) {
         emit('toast', error.response?.data?.message || 'Gagal simpan', 'error');
     } finally {
         isSaving.value = false;
+    }
+};
+
+// AI Generate CPMK
+const generateAI = async () => {
+    if (cpmks.value.length > 0 && !confirm('Sudah ada CPMK. Generate AI akan menambahkan CPMK baru. Lanjutkan?')) return;
+    if (props.availableCpls.length === 0) {
+        emit('toast', 'Tidak ada CPL yang terpetakan ke MK ini!', 'error');
+        return;
+    }
+    isGeneratingAI.value = true;
+    try {
+        const response = await axios.post(`/kurikulum/${props.kurikulumId}/mk/${props.mataKuliah.id}/cpmk/generate-ai`);
+        if (response.data.cpmks?.length) {
+            response.data.cpmks.forEach(c => {
+                cpmks.value.push({ ...c, isEditing: false, editData: {} });
+            });
+            emit('toast', `✨ ${response.data.cpmks.length} CPMK di-generate!`, 'success');
+            emit('updated');
+        } else {
+            emit('toast', 'AI tidak menghasilkan CPMK.', 'warning');
+        }
+    } catch (error) {
+        emit('toast', error.response?.data?.message || 'Gagal generate AI', 'error');
+    } finally {
+        isGeneratingAI.value = false;
     }
 };
 
@@ -250,6 +298,7 @@ const saveLine = async (cpmk) => {
         Object.assign(cpmk, response.data.cpmk);
         cpmk.isEditing = false;
         emit('toast', 'CPMK diperbarui success', 'success');
+        emit('updated');
     } catch (error) {
         emit('toast', 'Gagal update', 'error');
     } finally {
@@ -263,6 +312,7 @@ const deleteCpmk = async (cpmk) => {
         await axios.delete(`/kurikulum/cpmk/${cpmk.id}`);
         cpmks.value = cpmks.value.filter(c => c.id !== cpmk.id);
         emit('toast', 'CPMK dihapus', 'success');
+        emit('updated');
     } catch (error) {
         emit('toast', 'Gagal hapus', 'error');
     }

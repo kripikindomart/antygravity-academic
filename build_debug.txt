@@ -1,0 +1,30 @@
+
+> build
+> vite build
+
+[36mvite v7.3.0 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 12 modules transformed.
+[31m✗[39m Build failed in 1.11s
+[31merror during build:
+[31m[vite:vue] [vue/compiler-sfc] Unexpected token (90:0)
+
+C:/laragon/www/antygravity-jadwal/resources/js/Pages/Kurikulum/Show.vue
+584|  });
+585|  
+586|      fetchAvailableMks();
+   |                            ^
+587|  });
+   |  ^
+588|  [31m
+file: [36mC:/laragon/www/antygravity-jadwal/resources/js/Pages/Kurikulum/Show.vue:90:0[31m
+    at constructor (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:367:19)
+    at Parser.raise (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:6624:19)
+    at Parser.unexpected (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:6644:16)
+    at Parser.parseExprAtom (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:11508:22)
+    at Parser.parseExprSubscripts (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:11145:23)
+    at Parser.parseUpdate (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:11130:21)
+    at Parser.parseMaybeUnary (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:11110:23)
+    at Parser.parseMaybeUnaryOrPrivate (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:10963:61)
+    at Parser.parseExprOps (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:10968:23)
+    at Parser.parseMaybeConditional (c:\laragon\www\antygravity-jadwal\node_modules\@babel\parser\lib\index.js:10945:23)[39m

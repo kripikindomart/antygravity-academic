@@ -92,6 +92,7 @@
                         <NavItem v-if="hasPermission('roles.view')" href="/roles" icon="shield" label="Roles & Permissions" />
                         <NavItem v-if="hasPermission('roles.view')" href="/menus" icon="menu" label="Menu" />
                         <NavItem v-if="hasPermission('settings.view')" href="/settings" icon="cog" label="Pengaturan" />
+                        <NavItem v-if="auth.user?.roles?.includes('administrator')" href="/settings/ai" icon="sparkles" label="Pengaturan AI" />
                     </div>
                     
                     <!-- Laporan & Keuangan -->

@@ -106,6 +106,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/sync-sidebar', [\App\Http\Controllers\MenuController::class, 'syncFromSidebar'])->name('sync-sidebar');
     });
 
+    // Settings
+    Route::get('/settings/ai', [\App\Http\Controllers\SettingController::class, 'index'])->name('settings.ai')->middleware('role:administrator');
+    Route::post('/settings/ai', [\App\Http\Controllers\SettingController::class, 'update'])->name('settings.ai.update')->middleware('role:administrator');
+
     // Kurikulum OBE
     Route::prefix('kurikulum')->name('kurikulum.')->middleware('permission:kurikulum.view')->group(function () {
         Route::get('/', [\App\Http\Controllers\KurikulumController::class, 'index'])->name('index');
@@ -125,8 +129,11 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{kurikulum}/remove-mk/{mk}', [\App\Http\Controllers\KurikulumController::class, 'removeMk'])->name('mk.remove')->middleware('permission:kurikulum.edit');
         Route::post('/{kurikulum}/remove-mk-bulk', [\App\Http\Controllers\KurikulumController::class, 'removeMkBulk'])->name('mk.remove-bulk')->middleware('permission:kurikulum.delete');
 
+
+
         // CPMK Management
         Route::get('/{kurikulum}/mk/{mataKuliah}/cpmk', [\App\Http\Controllers\CpmkController::class, 'getByKurikulumMataKuliah'])->name('cpmk.by-mk');
+        Route::post('/{kurikulum}/mk/{mataKuliah}/cpmk/generate-ai', [\App\Http\Controllers\CpmkController::class, 'generateAi'])->name('cpmk.generate-ai')->middleware('permission:kurikulum.edit');
         Route::post('/cpmk', [\App\Http\Controllers\CpmkController::class, 'store'])->name('cpmk.store')->middleware('permission:kurikulum.edit');
         Route::put('/cpmk/{cpmk}', [\App\Http\Controllers\CpmkController::class, 'update'])->name('cpmk.update')->middleware('permission:kurikulum.edit');
         Route::delete('/cpmk/{cpmk}', [\App\Http\Controllers\CpmkController::class, 'destroy'])->name('cpmk.destroy')->middleware('permission:kurikulum.delete');
@@ -155,6 +162,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/ai/generate-rps-full', [App\Http\Controllers\AiRpsController::class, 'generateFull'])->name('ai.generate-rps-full');
     Route::post('/ai/generate-complete', [App\Http\Controllers\AiRpsController::class, 'generateComplete'])->name('ai.generate-complete');
     Route::post('/sub-cpmk', [\App\Http\Controllers\SubCpmkController::class, 'store'])->name('sub-cpmk.store');
+    Route::put('/sub-cpmk/{subCpmk}', [\App\Http\Controllers\SubCpmkController::class, 'update'])->name('sub-cpmk.update');
+    Route::delete('/sub-cpmk/{subCpmk}', [\App\Http\Controllers\SubCpmkController::class, 'destroy'])->name('sub-cpmk.destroy');
 
     // RPS PDF Export
     Route::get('/rps/{rps}/pdf', [\App\Http\Controllers\RpsPdfController::class, 'generate'])->name('rps.pdf');

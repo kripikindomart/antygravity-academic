@@ -26,5 +26,29 @@ class SubCpmkController extends Controller
         return back()->with('success', 'Sub-CPMK berhasil dibuat.');
     }
 
-    // Update/Delete if needed
+    public function update(Request $request, SubCpmk $subCpmk)
+    {
+        $validated = $request->validate([
+            'kode' => 'required|string|max:50',
+            'deskripsi' => 'required|string',
+            'urutan' => 'integer|nullable',
+        ]);
+
+        $subCpmk->update($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json($subCpmk->load('cpmk'));
+        }
+        return back()->with('success', 'Sub-CPMK updated.');
+    }
+
+    public function destroy(Request $request, SubCpmk $subCpmk)
+    {
+        $subCpmk->delete();
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true]);
+        }
+        return back()->with('success', 'Sub-CPMK dihapus.');
+    }
 }

@@ -11,11 +11,13 @@ use App\Models\Rps;
 use App\Models\Cpmk;
 use App\Models\SubCpmk;
 use App\Models\MataKuliah;
+use App\Models\Semester;
+use App\Services\AiService;
 
 class AiRpsController extends Controller
 {
     /**
-     * Store OpenAI API Key for current user
+     * Store OpenAI API Key for current user (Legacy - can be removed or kept for per-user override)
      */
     public function storeSettings(Request $request)
     {
@@ -31,76 +33,67 @@ class AiRpsController extends Controller
     }
 
     /**
-     * Complete RPS Generation - Simplified endpoint
-     * Accepts mata_kuliah_id, auto-creates RPS if needed, generates everything
+     * Complete RPS Generation
      */
-    public function generateComplete(Request $request)
+    public function generateComplete(Request $request, AiService $aiService)
     {
         $request->validate([
             'mata_kuliah_id' => 'required|exists:mata_kuliahs,id',
-            'topics' => 'required|string|min:10',
-            'model' => 'nullable|string|in:gpt-4o,gpt-3.5-turbo,gpt-4-turbo',
+            'mode' => 'required|in:by_data,manual',
+            'topics' => 'required_if:mode,manual|nullable|string',
         ]);
 
-        // Get API Key
-        $apiKey = Auth::user()->openai_api_key;
-        if (!$apiKey) {
+        // Get Active Semester
+        $activeSemester = Semester::active()->first();
+        if (!$activeSemester) {
             return response()->json([
                 'success' => false,
-                'message' => 'API Key belum diset. Silakan isi di Pengaturan AI.'
+                'message' => 'Tidak ada semester aktif. Harap set semester aktif terlebih dahulu.'
             ], 400);
         }
 
         // Load Mata Kuliah
         $mk = MataKuliah::with('prodi')->findOrFail($request->mata_kuliah_id);
-        $topics = $request->topics;
-        $model = $request->model ?: 'gpt-3.5-turbo';
 
-        // Get or create RPS
+        // Determine Topics
+        $topics = $request->topics;
+        if ($request->mode === 'by_data') {
+            $topics = "Generate topik berdasarkan Deskripsi Mata Kuliah: {$mk->deskripsi}. Pastikan mencakup seluruh materi standar untuk mata kuliah ini.";
+        }
+
+        // Get or create RPS for ACTIVE SEMESTER
         $rps = Rps::firstOrCreate(
-            ['mata_kuliah_id' => $mk->id, 'semester_id' => 1],
+            ['mata_kuliah_id' => $mk->id, 'semester_id' => $activeSemester->id],
             [
                 'dosen_id' => Auth::id(),
                 'status' => 'draft',
-                'nomor' => 'RPS-' . date('YmdHis'),
+                'nomor' => 'RPS-' . $mk->kode . '-' . $activeSemester->kode,
                 'tanggal_penyusunan' => now(),
             ]
         );
 
-        // Get ALL CPMKs for this MK
-        $cpmks = Cpmk::where('mata_kuliah_id', $mk->id)->orderBy('kode')->get();
+        // Get ALL CPMKs with Sub-CPMKs
+        $cpmks = Cpmk::where('mata_kuliah_id', $mk->id)
+            ->with(['subCpmks'])
+            ->orderBy('kode')
+            ->get();
+
         if ($cpmks->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tidak ada CPMK untuk Mata Kuliah ini. Hubungi Kaprodi untuk menambahkan CPMK.'
+                'message' => 'Tidak ada CPMK untuk Mata Kuliah ini. Silakan generate CPMK di menu Kurikulum terlebih dahulu.'
             ], 400);
         }
 
-        // Build comprehensive prompt with CPMK list
+        // Build prompt with EXISTING Sub-CPMKs
         $prompt = $this->buildPrompt($mk, $topics, $cpmks);
+        $systemPrompt = $this->getSystemPrompt();
 
         try {
-            $response = Http::withToken($apiKey)
-                ->timeout(120)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $this->getSystemPrompt()],
-                        ['role' => 'user', 'content' => $prompt],
-                    ],
-                    'temperature' => 0.7,
-                    'max_tokens' => 4000,
-                ]);
+            // Use AiService
+            $content = $aiService->generate($prompt, ['system_prompt' => $systemPrompt]);
 
-            if ($response->failed()) {
-                Log::error('OpenAI API Error', ['body' => $response->body()]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'OpenAI Error: ' . $response->json('error.message', 'Unknown error')
-                ], 500);
-            }
-
-            $content = $response->json('choices.0.message.content');
+            // Clean response
             $content = preg_replace('/```json\s*/', '', $content);
             $content = preg_replace('/```\s*/', '', $content);
             $content = trim($content);
@@ -131,42 +124,32 @@ class AiRpsController extends Controller
      */
     private function getSystemPrompt(): string
     {
-        return "Anda adalah asisten ahli kurikulum perguruan tinggi Indonesia yang berpengalaman menyusun Rencana Pembelajaran Semester (RPS) sesuai standar KKNI, SN-DIKTI, dan Outcome Based Education (OBE).
-
-TUGAS: Buat RPS LENGKAP dalam format JSON yang valid (tanpa markdown).
+        return "Anda adalah asisten ahli kurikulum perguruan tinggi Indonesia.
+TUGAS: Buat RPS LENGKAP berbasis OBE (Outcome Based Education) format JSON untuk 16 Pertemuan.
 
 ATURAN PENTING:
-1. Pertemuan 8 = UTS (Ujian Tengah Semester)
-2. Pertemuan 16 = UAS (Ujian Akhir Semester)
-3. Distribusikan topik ke pertemuan 1-7 dan 9-15 secara logis dan progresif.
-4. Distribusikan Sub-CPMK secara merata ke SEMUA kode CPMK yang tersedia (jangan hanya ke satu CPMK). Setiap CPMK harus memiliki minimal 1-2 Sub-CPMK.
-5. Buat total 8-12 Sub-CPMK yang spesifik dan terukur.
-6. Metode pembelajaran harus bervariasi (Case Study, Project Based Learning, Diskusi, dll).
-7. Total bobot nilai HARUS PERSIS 100%. HITUNG ULANG SEBELUM OUTPUT. (UTS=30%, UAS=30-40%, Tugas/Lainny=30-40%, pastikan total sum = 100). Validasi penjumlahan bobot harus 100.
-8. PUSTAKA WAJIB JURNAL DAN BUKU (MINIMAL 10-15 REFERENSI TOTAL):
-   - JANGAN HANYA MENULIS NAMA JURNAL! ANDA HARUS MENGUTIP JUDUL ARTIKEL SPESIFIK.
-   - SALAH: \"Journal of Business Research. (2021). Elsevier.\" (INI DILARANG!)
-   - BENAR: \"Anderson, J. (2021). The Impact of AI on Business. Journal of Business Research, 10(2), 45-60.\"
-   - WAJIB ADA Minimal 5 Jurnal Nasional (Indonesia).
-   - WAJIB ADA Minimal 5 Jurnal Internasional.
-   - Format Referensi: Penulis. (Tahun). Judul Artikel/Buku. Penerbit/Jurnal.
-9. Setiap indikator harus SMART (Specific, Measurable, Achievable, Relevant, Time-bound).
+1. Pertemuan 8 = UTS, Pertemuan 16 = UAS.
+2. Gunakan Sub-CPMK yang DISEDIAKAN dalam prompt. JANGAN MEMBUAT SUB-CPMK BARU. Pilih dari daftar db.
+3. Petakan 'sub_cpmk_code_ref' di setiap pertemuan sesuai dengan kode yang diberikan.
+4. Total bobot nilai 'details' HARUS PERSIS 100%. (UTS=30, UAS=30, Tugas=40 misalnya).
+5. Pustaka WAJIB minimal 15-20 item, format APA style.
+   Harus terdiri dari: Jurnal Nasional Indonesia, Jurnal Internasional, Buku, dan Website.
 
-OUTPUT FORMAT (JSON only, no markdown):
+OUTPUT FORMAT (JSON):
 {
-    \"deskripsi\": \"Deskripsi mata kuliah 2-3 paragraf\",
-    \"bahan_kajian\": \"Daftar bahan kajian...\",
-    \"pustaka_utama\": \"1. Penulis (Tahun). Judul. Kota: Penerbit. (Buku)\\n2. [Judul Buku Lain]...\\n... (Min 5 Item)\",
-    \"pustaka_pendukung\": \"1. Penulis (Tahun). Judul Artikel. Nama Jurnal. (Jurnal Nasional)\\n2. ...\\n3. ...\\n4. ...\\n5. ... (Min 5-10 Item)\",
-    \"sub_cpmks\": [
-        {
-            \"text_cpmk_terkait\": \"Kode CPMK yang sesuai (misal CPMK-01)\",
-            \"kode\": \"SC-01\", 
-            \"deskripsi\": \"Mahasiswa mampu...\"
-        }
-    ],
+    \"deskripsi\": \"...\",
+    \"bahan_kajian\": \"...\",
+    \"pustaka_utama\": \"...\",
+    \"pustaka_pendukung\": \"...\",
     \"details\": [
-        {\"pertemuan\": 1, \"materi\": \"...\", \"metode\": \"...\", \"indikator\": \"...\", \"bobot_nilai\": 5, \"sub_cpmk_code_ref\": \"SC-01\"}
+        {
+            \"pertemuan\": 1, 
+            \"materi\": \"...\", 
+            \"metode\": \"...\", 
+            \"indikator\": \"...\", 
+            \"bobot_nilai\": 5, 
+            \"sub_cpmk_code_ref\": \"KODE_SUB_CPMK_DARI_LIST\"
+        }
     ]
 }";
     }
@@ -179,31 +162,53 @@ OUTPUT FORMAT (JSON only, no markdown):
         $sks = ($mk->sks_teori ?? 0) + ($mk->sks_praktik ?? 0);
         $prodi = $mk->prodi->nama ?? 'Program Studi';
 
-        // Format CPMK list string
+        // Format CPMK & Sub-CPMK List
         $cpmkList = $cpmks->map(function ($c) {
-            return "- {$c->kode}: {$c->deskripsi}";
+            $subs = $c->subCpmks->map(fn($s) => "    - [{$s->kode}] {$s->deskripsi}")->join("\n");
+            return "- {$c->kode}: {$c->deskripsi}\n{$subs}";
         })->join("\n");
 
-        return "Buatkan RPS berbasis OBE untuk mata kuliah berikut:
+        return "Buatkan RPS berbasis OBE untuk mata kuliah:
 
-INFORMASI MATA KULIAH:
-- Nama: {$mk->nama}
-- Kode: {$mk->kode}
-- SKS: {$sks} ({$mk->sks_teori} Teori + {$mk->sks_praktik} Praktik)
-- Program Studi: {$prodi}
+INFORMASI:
+- Nama: {$mk->nama} ({$mk->kode})
+- SKS: {$sks}
+- Prodi: {$prodi}
 
-DAFTAR CPMK YANG TERSEDIA (Petakan Sub-CPMK ke kode-kode ini):
+DAFTAR SUB-CPMK YANG TERSEDIA (Gunakan kode dalam kurung siku [...] untuk referensi):
 {$cpmkList}
 
-TOPIK/SILABUS YANG HARUS DICAKUP:
+TOPIK/CAKUPAN:
 {$topics}
 
-INSTRUKSI KHUSUS:
-1. Pastikan Sub-CPMK terdistribusi ke CPMK-CPMK di atas.
-2. Referensi (Pustaka) minimal 10-15 sumber (Jurnal Nasional/Internasional & Buku).
-3. Total Bobot Penilaian = 100%.
+INSTRUKSI UTAMA (WAJIB DIPATUHI):
+1. Susun 16 pertemuan (Pertemuan 8 UTS, Pertemuan 16 UAS).
+2. TUGAS DISTRIBUSI: Anda memiliki 14 SLOT pertemuan efektif (1-7 dan 9-15).
+   - Gunakan daftar Sub-CPMK di atas untuk mengisi KE-14 slot tersebut.
+   - JIKA jumlah Sub-CPMK lebih sedikit dari 14, MAKA SATU SUB-CPMK HARUS DIGUNAKAN UNTUK BEBERAPA PERTEMUAN BERTURUT-TURUT.
+   - Contoh: Sub-CPMK-1 digunakan di Pertemuan 1 (Materi A) dan Pertemuan 2 (Materi B).
+   - JANGAN HANYA MEMASUKKAN SATU KALI LALU HABIS. Distribusikan secara proporsional agar materi mendalam.
+3. Setiap pertemuan (Kecuali 8 & 16) WAJIB memiliki 'sub_cpmk_code_ref' dari daftar.
+4. Buat 'materi' perkuliahan BERDASARKAN Deskripsi Sub-CPMK yang kamu plot pada pertemuan tersebut.
+5. 'details' bobot harus total 100%.
+6. PUSTAKA (DAFTAR PUSTAKA) - SANGAT KRUSIAL:
+   - WAJIB TOTAL MINIMAL 15-20 ITEM. (JIKA KURANG DARI 15 SAYA AKAN MERASA GAGAL).
+   - KOMPOSISI WAJIB:
+     a. Pustaka Utama (Minimal 8): Buku Teks, Jurnal Ilmiah Bereputasi.
+     b. Pustaka Pendukung (Minimal 7): Artikel Jurnal, Website Resmi, Peraturan/UU.
+   - FORMAT: APA STYLE.
+   - JANGAN HANYA MENULIS 2-3!!! TULISKAN DAFTAR PANJANG.
+   - Contoh Output Pustaka Utama:
+     1. Author A. (2020)...
+     2. Author B. (2019)...
+     (dan seterusnya sampai minimal 8)
+   - Contoh Output Pustaka Pendukung:
+     1. Author X. (2021)...
+     2. Author Y. (2022)...
+     (dan seterusnya sampai minimal 7)
+7. 'details' bobot harus total 100%.
 
-Buatkan RPS lengkap dengan 16 pertemuan.";
+";
     }
 
     /**
@@ -223,111 +228,138 @@ Buatkan RPS lengkap dengan 16 pertemuan.";
                 'tanggal_penyusunan' => now(),
             ]);
 
-            // Map CPMKs by Kode for easy lookup
-            $cpmkMapByKode = $cpmks->pluck('id', 'kode'); // ['CPMK-01' => 10, 'CPMK-02' => 11]
-
-            // Allow fuzzy matching if AI creates slight variations
-            $firstCpmkId = $cpmks->first()->id;
-
-            // 2. Create Sub-CPMKs with unique codes
-            $subCpmkIdMap = []; // Maps AI 'SC-01' or index to DB ID
-            $timestamp = now()->format('His'); // Unique per generation
-
-            foreach ($data['sub_cpmks'] ?? [] as $index => $sc) {
-                // Determine Parent CPMK ID
-                $parentCpmkId = $firstCpmkId; // Default fallback
-
-                if (isset($sc['text_cpmk_terkait'])) {
-                    $aiCpmkKode = strtoupper(trim($sc['text_cpmk_terkait']));
-                    // Try exact match
-                    if ($cpmkMapByKode->has($aiCpmkKode)) {
-                        $parentCpmkId = $cpmkMapByKode->get($aiCpmkKode);
-                    } else {
-                        // Try matching first 7 chars (e.g. CPMK-01)
-                        foreach ($cpmkMapByKode as $code => $id) {
-                            if (strpos($aiCpmkKode, $code) !== false) {
-                                $parentCpmkId = $id;
-                                break;
-                            }
-                        }
-                    }
+            // 2. Map Sub-CPMK Codes to IDs
+            // We need a map of Code -> ID for all existing Sub-CPMKs
+            $subCpmkMap = [];
+            foreach ($cpmks as $cpmk) {
+                foreach ($cpmk->subCpmks as $sub) {
+                    $subCpmkMap[$sub->kode] = $sub->id;
+                    // Also fuzzy match by stripping whitespace or case if needed
+                    $subCpmkMap[strtoupper($sub->kode)] = $sub->id;
                 }
-
-                $kode = 'SC-' . str_pad($index + 1, 2, '0', STR_PAD_LEFT) . '-' . $timestamp;
-
-                // Create Sub-CPMK
-                $created = SubCpmk::create([
-                    'cpmk_id' => $parentCpmkId,
-                    'kode' => $kode,
-                    'deskripsi' => $sc['deskripsi'],
-                    'urutan' => $index + 1,
-                ]);
-
-                // Map the code used in JSON (e.g., 'SC-01') to the real DB ID
-                $aiCodeRef = $sc['kode'] ?? ('SC-' . ($index + 1)); // The code AI said it used
-                $subCpmkIdMap[$aiCodeRef] = $created->id;
-
-                // Also map by index as fallback
-                $subCpmkIdMap[$index] = $created->id;
             }
+
+            // Allow matching by index or simple code if AI hallucinates format
+            // But relying on Prompt to return exact code is better.
 
             // 3. Create/Update RPS Details
-            // Pre-calculation for Weight Normalization
-            $detailsData = $data['details'] ?? [];
-            $totalBobot = array_reduce($detailsData, function ($carry, $item) {
-                return $carry + ($item['bobot_nilai'] ?? 0);
-            }, 0);
+            $rawDetails = $data['details'] ?? [];
 
-            // Normalize weights if not 0
-            if ($totalBobot > 0 && $totalBobot != 100) {
+            // Ensure 1-16 meetings exist
+            $detailsData = [];
+            $aiDetailsMap = [];
+            foreach ($rawDetails as $row) {
+                if (isset($row['pertemuan'])) {
+                    $aiDetailsMap[$row['pertemuan']] = $row;
+                }
+            }
+
+            for ($i = 1; $i <= 16; $i++) {
+                if (isset($aiDetailsMap[$i])) {
+                    $d = $aiDetailsMap[$i];
+                    // Force naming for UTS/UAS if weird
+                    if ($i == 8 && stripos($d['materi'], 'UTS') === false)
+                        $d['materi'] = "Ujian Tengah Semester (UTS)";
+                    if ($i == 16 && stripos($d['materi'], 'UAS') === false)
+                        $d['materi'] = "Ujian Akhir Semester (UAS)";
+                    $detailsData[] = $d;
+                } else {
+                    // Inject missing meeting
+                    $isUts = ($i == 8);
+                    $isUas = ($i == 16);
+                    $materiName = $isUts ? 'Ujian Tengah Semester (UTS)' : ($isUas ? 'Ujian Akhir Semester (UAS)' : "Pertemuan $i");
+                    $bobotDefault = ($isUts || $isUas) ? 15 : 5; // Placeholder
+
+                    $detailsData[] = [
+                        'pertemuan' => $i,
+                        'materi' => $materiName,
+                        'metode' => $isUts || $isUas ? 'Ujian' : 'Kuliah',
+                        'indikator' => '',
+                        'bobot_nilai' => $bobotDefault,
+                        'sub_cpmk_code_ref' => '' // No Sub-CPMK for missing ones
+                    ];
+                }
+            }
+
+            // Normalization: Ensure Total Bobot is exactly 100%
+            $totalBobot = array_sum(array_column($detailsData, 'bobot_nilai'));
+            if ($totalBobot > 0 && abs($totalBobot - 100) > 0.01) {
                 $runningTotal = 0;
                 $count = count($detailsData);
-                foreach ($detailsData as $k => &$dt) {
-                    $original = $dt['bobot_nilai'] ?? 0;
-                    // Calculate proportional weight
-                    $normalized = ($original / $totalBobot) * 100;
-                    $rounded = round($normalized, 2);
-
-                    $dt['bobot_nilai'] = $rounded;
-                    $runningTotal += $rounded;
+                foreach ($detailsData as $i => &$d) {
+                    if ($i === $count - 1) {
+                        // Last item absorbs the remainder to force 100
+                        $d['bobot_nilai'] = max(0, 100 - $runningTotal);
+                    } else {
+                        // Scale to 100 then round to nearest 0.5
+                        $scaled = ($d['bobot_nilai'] / $totalBobot) * 100;
+                        $normalized = round($scaled * 2) / 2;
+                        $d['bobot_nilai'] = $normalized;
+                        $runningTotal += $normalized;
+                    }
                 }
-
-                // Fix rounding error on the last non-zero item
-                $diff = 100 - $runningTotal;
-                if (abs($diff) > 0.0001) {
-                    for ($i = $count - 1; $i >= 0; $i--) {
-                        if (($detailsData[$i]['bobot_nilai'] ?? 0) > 0) {
-                            $detailsData[$i]['bobot_nilai'] += $diff;
-                            break;
-                        }
+            } else if ($totalBobot == 0 && count($detailsData) > 0) {
+                // If AI gave 0, distribute evenly with 0.5 steps
+                $avg = 100 / count($detailsData);
+                $roundedAvg = round($avg * 2) / 2;
+                $runningTotal = 0;
+                foreach ($detailsData as $i => &$d) {
+                    if ($i === count($detailsData) - 1) {
+                        $d['bobot_nilai'] = max(0, 100 - $runningTotal);
+                    } else {
+                        $d['bobot_nilai'] = $roundedAvg;
+                        $runningTotal += $roundedAvg;
                     }
                 }
             }
 
-            $detailsCount = 0;
+            // But let's keep basic normalization strictly to 100 if user requested.
+            // ... Assuming user can edit.
+
+            $rps->details()->delete(); // Reset details for this generated session? Or updateOrCreate?
+            // "data RPS akan 0 kembali" implied fresh start for new generation.
+            // Using delete() ensures clean slate.
+
+            // FALLBACK & SAVING LOOP
+            $lastValidSubCpmkId = (!empty($subCpmkMap)) ? reset($subCpmkMap) : null; // Default to first if all fail
+
             foreach ($detailsData as $detail) {
                 $subCpmkId = null;
+                $pertemuan = $detail['pertemuan'];
 
-                // Try finding by code ref
-                if (isset($detail['sub_cpmk_code_ref']) && isset($subCpmkIdMap[$detail['sub_cpmk_code_ref']])) {
-                    $subCpmkId = $subCpmkIdMap[$detail['sub_cpmk_code_ref']];
-                }
-                // Fallback: Try by index
-                elseif (isset($detail['sub_cpmk_index']) && isset($subCpmkIdMap[$detail['sub_cpmk_index']])) {
-                    $subCpmkId = $subCpmkIdMap[$detail['sub_cpmk_index']];
+                // Skip Sub-CPMK for UTS/UAS
+                if ($pertemuan == 8 || $pertemuan == 16) {
+                    $subCpmkId = null;
+                } else {
+                    $ref = $detail['sub_cpmk_code_ref'] ?? '';
+                    // Normalize: Remove brackets causing mismatch
+                    $ref = trim(str_replace(['[', ']'], '', $ref));
+
+                    if ($ref && isset($subCpmkMap[$ref])) {
+                        $subCpmkId = $subCpmkMap[$ref];
+                    } elseif ($ref && isset($subCpmkMap[strtoupper($ref)])) {
+                        $subCpmkId = $subCpmkMap[strtoupper($ref)];
+                    }
+
+                    // FALLBACK: If still null, use last valid
+                    if (!$subCpmkId && $lastValidSubCpmkId) {
+                        $subCpmkId = $lastValidSubCpmkId;
+                    }
+
+                    // Update last valid
+                    if ($subCpmkId) {
+                        $lastValidSubCpmkId = $subCpmkId;
+                    }
                 }
 
-                $rps->details()->updateOrCreate(
-                    ['pertemuan' => $detail['pertemuan']],
-                    [
-                        'materi' => $detail['materi'] ?? '',
-                        'metode' => $detail['metode'] ?? '',
-                        'indikator' => $detail['indikator'] ?? '',
-                        'bobot_nilai' => $detail['bobot_nilai'] ?? 0,
-                        'sub_cpmk_id' => $subCpmkId,
-                    ]
-                );
-                $detailsCount++;
+                $rps->details()->create([
+                    'pertemuan' => $detail['pertemuan'],
+                    'materi' => $detail['materi'] ?? '',
+                    'metode' => $detail['metode'] ?? '',
+                    'indikator' => $detail['indikator'] ?? '',
+                    'bobot_nilai' => $detail['bobot_nilai'] ?? 0,
+                    'sub_cpmk_id' => $subCpmkId,
+                ]);
             }
 
             DB::commit();
@@ -336,9 +368,7 @@ Buatkan RPS lengkap dengan 16 pertemuan.";
                 'success' => true,
                 'message' => 'RPS berhasil di-generate!',
                 'rps_id' => $rps->id,
-                'sub_cpmks_created' => count($subCpmkIdMap),
-                'details_created' => $detailsCount,
-                'redirect_url' => route('rps.edit', $rps->id),
+                'redirect_url' => route('rps.edit', $rps->id), // Ensure route exists
             ]);
 
         } catch (\Exception $e) {

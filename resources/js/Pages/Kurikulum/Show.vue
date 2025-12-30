@@ -281,6 +281,12 @@
                                         <span class="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gray-700">{{ mk.kode }}</span>
                                         <span>•</span>
                                         <span class="capitalize">{{ mk.jenis }}</span>
+                                        <span class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs border border-blue-100 font-bold ml-2" v-if="mk.cpmks && mk.cpmks.length > 0">
+                                            {{ mk.cpmks.length }} CPMK
+                                        </span>
+                                        <span class="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-xs border border-gray-200 font-bold ml-2" v-else>
+                                            0 CPMK
+                                        </span>
                                     </p>
                                 </div>
                                 <div class="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -453,6 +459,7 @@
                             :available-cpls="getAssignedCplsForMk(selectedMkForCpmk)"
                             @close="showCpmkModal = false"
                             @toast="showToast"
+                            @updated="handleCpmkUpdate"
                         />
                     </div>
                 </div>
@@ -575,6 +582,14 @@ const fetchAvailableMks = async () => {
 watch(filterProdiId, () => {
     fetchAvailableMks();
 });
+
+onMounted(() => {
+    fetchAvailableMks();
+});
+
+const handleCpmkUpdate = () => {
+    router.reload({ only: ['kurikulum'] });
+};
 
 const isAllSelected = computed(() => {
     return availableMks.value.length > 0 && selectedAssignIds.value.length === availableMks.value.length;

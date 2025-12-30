@@ -5,7 +5,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { 
     ChevronUpIcon, PlusIcon, TrashIcon, BookOpenIcon, 
-    QueueListIcon, SparklesIcon, Cog6ToothIcon,
+    QueueListIcon, SparklesIcon, Cog6ToothIcon, ChartPieIcon,
     CheckCircleIcon, ExclamationCircleIcon, ArrowPathIcon, AcademicCapIcon,
     ClockIcon, CheckBadgeIcon, PencilSquareIcon, PlusCircleIcon, ArrowLeftIcon,
     DocumentArrowDownIcon, ChevronDownIcon, ArrowDownTrayIcon, EyeIcon, PaperAirplaneIcon, BookmarkSquareIcon
@@ -42,6 +42,8 @@ const form = useForm({
 // UI State
 const activeTab = ref('magic'); // Start with Magic Generator
 const localSubCpmks = ref([...(props.availableSubCpmks || [])]);
+const generationMode = ref('by_data');
+const editingSubCpmkId = ref(null);
 
 // DEBUG: Log props on mount
 onMounted(() => {
@@ -97,18 +99,61 @@ const saveSubCpmk = async () => {
     
     isSavingSubCpmk.value = true;
     try {
-        const res = await axios.post(route('sub-cpmk.store'), {
-            cpmk_id: cpmkId,
-            kode: newSubCpmk.value.kode || `SC-${String(localSubCpmks.value.length + 1).padStart(2, '0')}-${Date.now().toString(36)}`,
-            deskripsi: newSubCpmk.value.deskripsi,
-            urutan: localSubCpmks.value.length + 1,
-        });
-        localSubCpmks.value.push(res.data);
-        newSubCpmk.value = { cpmk_id: cpmkId, kode: '', deskripsi: '' }; // Keep same CPMK selected
+        if (editingSubCpmkId.value) {
+            // Update Existing
+            const res = await axios.put(route('sub-cpmk.update', editingSubCpmkId.value), {
+                cpmk_id: cpmkId,
+                kode: newSubCpmk.value.kode,
+                deskripsi: newSubCpmk.value.deskripsi,
+            });
+            // Update local list
+            const index = localSubCpmks.value.findIndex(s => s.id === editingSubCpmkId.value);
+            if (index !== -1) localSubCpmks.value[index] = res.data;
+            
+            showToast('Sub-CPMK berhasil diperbarui', 'success');
+            cancelEditSubCpmk();
+
+        } else {
+            // Create New
+            const res = await axios.post(route('sub-cpmk.store'), {
+                cpmk_id: cpmkId,
+                kode: newSubCpmk.value.kode || `SC-${String(localSubCpmks.value.length + 1).padStart(2, '0')}-${Date.now().toString(36)}`,
+                deskripsi: newSubCpmk.value.deskripsi,
+                urutan: localSubCpmks.value.length + 1,
+            });
+            localSubCpmks.value.push(res.data);
+            // newSubCpmk.value = { cpmk_id: cpmkId, kode: '', deskripsi: '' }; - Done in cancel/reset
+            showToast('Sub-CPMK ditambahkan', 'success');
+            // Keep form open but clear fields (except CPMK)
+            newSubCpmk.value = { cpmk_id: cpmkId, kode: '', deskripsi: '' };
+        }
     } catch (e) {
         alert('Gagal menyimpan: ' + (e.response?.data?.message || e.message));
     } finally {
         isSavingSubCpmk.value = false;
+    }
+};
+
+const editSubCpmk = (sc) => {
+    editingSubCpmkId.value = sc.id;
+    newSubCpmk.value = { ...sc };
+    // Focus or scroll to form
+    // Optional: document.getElementById('subcpmk-form')?.scrollIntoView({ behavior: 'smooth' });
+};
+
+const cancelEditSubCpmk = () => {
+    editingSubCpmkId.value = null;
+    newSubCpmk.value = { cpmk_id: props.availableCpmks?.[0]?.id, kode: '', deskripsi: '' };
+};
+
+const deleteSubCpmk = async (id) => {
+    if (!confirm('Hapus Sub-CPMK ini?')) return;
+    try {
+        await axios.delete(route('sub-cpmk.destroy', id));
+        localSubCpmks.value = localSubCpmks.value.filter(s => s.id !== id);
+        showToast('Sub-CPMK dihapus', 'success');
+    } catch (e) {
+        showToast('Gagal menghapus: ' + (e.response?.data?.message || e.message), 'error');
     }
 };
 
@@ -122,6 +167,11 @@ const mkInfo = computed(() => ({
 
 const filledMeetings = computed(() => {
     return form.details.filter(d => d.materi && d.materi.trim() !== '').length;
+});
+
+const totalBobot = computed(() => {
+    const sum = form.details.reduce((sum, d) => sum + (parseFloat(d.bobot_nilai) || 0), 0);
+    return Math.round(sum * 100) / 100;
 });
 
 // Methods
@@ -149,7 +199,7 @@ const saveSettings = async () => {
 };
 
 const generateRps = async () => {
-    if (!aiTopics.value.trim()) {
+    if (generationMode.value === 'manual' && !aiTopics.value.trim()) {
         alert('Masukkan topik/silabus terlebih dahulu.');
         return;
     }
@@ -164,17 +214,17 @@ const generateRps = async () => {
 
     addLog('🚀 Memulai AI RPS Generator...', 'info');
     addLog(`📚 Mata Kuliah: ${mkInfo.value.nama}`, 'info');
-    addLog(`🎓 Program Studi: ${mkInfo.value.prodi}`, 'info');
-    addLog(`📊 SKS: ${mkInfo.value.sks}`, 'info');
-
+    addLog(`⚙️ Mode: ${generationMode.value === 'by_data' ? 'Otomatis (Data MK)' : 'Manual (Topik Custom)'}`, 'info');
+    
     try {
-        addLog('🔍 Menganalisis topik yang diinput...', 'info');
+        addLog('🔍 Menganalisis input...', 'info');
         addLog(`🤖 Mengirim ke ${aiModel.value}...`, 'wait');
         addLog('⏳ Mohon tunggu 30-90 detik...', 'wait');
 
         const response = await axios.post(route('ai.generate-complete'), {
             mata_kuliah_id: props.mataKuliah.id,
             topics: aiTopics.value,
+            mode: generationMode.value, // Pass mode
             model: aiModel.value,
         });
 
@@ -529,22 +579,57 @@ const deleteRps = () => {
                                     </label>
                                 </div>
 
-                                <!-- Topics Input -->
-                                <div>
+                                <!-- Generation Mode -->
+                                <div class="mb-6">
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Metode Generasi</label>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <label class="relative cursor-pointer">
+                                            <input type="radio" v-model="generationMode" value="by_data" class="peer sr-only">
+                                            <div class="p-4 rounded-xl border-2 peer-checked:border-purple-500 peer-checked:bg-purple-50 hover:bg-gray-50 transition h-full">
+                                                <div class="font-bold text-gray-900 flex items-center gap-2">
+                                                    <SparklesIcon class="w-5 h-5 text-purple-600" />
+                                                    Otomatis (By Data)
+                                                </div>
+                                                <div class="text-sm text-gray-500 mt-1">Generate berdasarkan Deskripsi MK & CPMK yang tersimpan.</div>
+                                            </div>
+                                        </label>
+                                        <label class="relative cursor-pointer">
+                                            <input type="radio" v-model="generationMode" value="manual" class="peer sr-only">
+                                            <div class="p-4 rounded-xl border-2 peer-checked:border-purple-500 peer-checked:bg-purple-50 hover:bg-gray-50 transition h-full">
+                                                <div class="font-bold text-gray-900 flex items-center gap-2">
+                                                    <PencilSquareIcon class="w-5 h-5 text-purple-600" />
+                                                    Manual (Custom)
+                                                </div>
+                                                <div class="text-sm text-gray-500 mt-1">Input topik/silabus spesifik secara manual.</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Topics Input (Conditional) -->
+                                <div v-if="generationMode === 'manual'">
                                     <label class="block text-sm font-bold text-gray-700 mb-2">📝 Daftar Topik / Silabus</label>
                                     <textarea v-model="aiTopics" rows="10"
                                         class="w-full border-2 border-gray-200 rounded-xl p-4 focus:border-purple-500 focus:ring-purple-500 font-mono text-sm"
-                                        placeholder="Masukkan topik atau silabus mata kuliah:
-
-1. Pengantar dan Konsep Dasar
-2. Teori Fundamental
-3. Metode dan Teknik
-4. Implementasi Praktis
-5. Studi Kasus
-6. dst...
-
-Semakin detail, semakin akurat hasil AI!"
+                                        placeholder="1. Pengantar...&#10;2. Teori...&#10;3. Studi Kasus..."
                                     ></textarea>
+                                </div>
+                                <div v-else class="bg-indigo-50 border border-indigo-100 rounded-xl p-5 mb-6">
+                                    <div class="flex gap-4">
+                                        <div class="p-3 bg-white rounded-lg shadow-sm h-fit">
+                                            <SparklesIcon class="w-6 h-6 text-indigo-600" />
+                                        </div>
+                                        <div>
+                                            <h4 class="font-bold text-indigo-900">Siap Generate Otomatis</h4>
+                                            <p class="text-indigo-700 text-sm mt-1">
+                                                AI akan membaca:
+                                                <ul class="list-disc ml-5 mt-1 space-y-0.5">
+                                                    <li>Deskripsi Mata Kuliah: <strong>{{ mkInfo.nama }}</strong></li>
+                                                    <li>{{ props.availableCpmks?.length || 0 }} CPMK & {{ localSubCpmks.length }} Sub-CPMK</li>
+                                                </ul>
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- Warning if no CPMK -->
@@ -559,7 +644,7 @@ Semakin detail, semakin akurat hasil AI!"
                                 </div>
 
                                 <!-- Generate Button -->
-                                <button @click="generateRps" :disabled="!aiTopics.trim()"
+                                <button @click="generateRps" :disabled="generationMode === 'manual' && !aiTopics.trim()"
                                     class="w-full py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-red-500 text-white rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl hover:scale-[1.02] transition disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-3">
                                     <SparklesIcon class="w-6 h-6" />
                                     Generate RPS Lengkap dengan AI
@@ -690,10 +775,18 @@ Semakin detail, semakin akurat hasil AI!"
                                 </div>
                             </div>
 
-                            <!-- Add New Sub-CPMK Form -->
-                            <div v-if="props.availableCpmks?.length" class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6 mb-6">
-                                <h4 class="font-bold text-indigo-900 mb-4">➕ Tambah Sub-CPMK Baru</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            <!-- Add/Edit Sub-CPMK Form -->
+                            <div v-if="props.availableCpmks?.length" class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6 mb-6 transition-all" :class="editingSubCpmkId ? 'ring-2 ring-indigo-500' : ''">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h4 class="font-bold text-indigo-900 flex items-center gap-2">
+                                        <component :is="editingSubCpmkId ? PencilSquareIcon : PlusIcon" class="w-5 h-5" />
+                                        {{ editingSubCpmkId ? 'Edit Sub-CPMK' : 'Tambah Sub-CPMK Baru' }}
+                                    </h4>
+                                    <button v-if="editingSubCpmkId" @click="cancelEditSubCpmk" class="text-sm text-gray-500 hover:text-red-600 underline">
+                                        Batal Edit
+                                    </button>
+                                </div>
+                                <div id="subcpmk-form" class="grid grid-cols-1 md:grid-cols-5 gap-4">
                                     <div>
                                         <label class="block text-xs font-bold text-gray-500 mb-1">CPMK INDUK *</label>
                                         <select v-model="newSubCpmk.cpmk_id" 
@@ -716,9 +809,10 @@ Semakin detail, semakin akurat hasil AI!"
                                     </div>
                                     <div class="flex items-end">
                                         <button @click="saveSubCpmk" :disabled="isSavingSubCpmk || !newSubCpmk.deskripsi"
-                                            class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                                            <PlusIcon class="w-5 h-5" />
-                                            Tambah
+                                            class="w-full py-3 text-white rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg transition-all"
+                                            :class="editingSubCpmkId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'">
+                                            <component :is="editingSubCpmkId ? ArrowPathIcon : PlusIcon" class="w-5 h-5" />
+                                            {{ editingSubCpmkId ? 'Update' : 'Tambah' }}
                                         </button>
                                     </div>
                                 </div>
@@ -726,17 +820,33 @@ Semakin detail, semakin akurat hasil AI!"
 
                             <!-- Sub-CPMK List -->
                             <div v-if="localSubCpmks.length > 0" class="space-y-3">
-                                <div v-for="(sc, i) in localSubCpmks" :key="sc.id"
-                                    class="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-xl hover:shadow-sm transition">
-                                    <span class="w-10 h-10 flex items-center justify-center bg-indigo-100 text-indigo-700 rounded-full font-bold text-sm">
-                                        {{ i + 1 }}
-                                    </span>
-                                    <div class="flex-1">
-                                        <div class="font-bold text-gray-900">{{ sc.kode || 'No Kode' }}</div>
-                                        <div class="text-sm text-gray-600">{{ sc.deskripsi || 'No Description' }}</div>
+                                <TransitionGroup enter-active-class="transform ease-out duration-300 transition" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition ease-in duration-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
+                                    <div v-for="(sc, i) in localSubCpmks" :key="sc.id"
+                                        class="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition group">
+                                        <span class="w-10 h-10 flex items-center justify-center bg-indigo-100 text-indigo-700 rounded-full font-bold text-sm shrink-0">
+                                            {{ i + 1 }}
+                                        </span>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <div class="font-bold text-gray-900">{{ sc.kode || 'No Kode' }}</div>
+                                                <span v-if="editingSubCpmkId === sc.id" class="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-bold animate-pulse">Editing</span>
+                                            </div>
+                                            <div class="text-sm text-gray-600 truncate">{{ sc.deskripsi || 'No Description' }}</div>
+                                        </div>
+                                        <div class="flex flex-col items-end gap-1">
+                                            <span class="text-xs text-gray-400">CPMK ID: {{ sc.cpmk_id }}</span>
+                                            <!-- Actions -->
+                                            <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button @click="editSubCpmk(sc)" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Edit">
+                                                    <PencilSquareIcon class="w-5 h-5" />
+                                                </button>
+                                                <button @click="deleteSubCpmk(sc.id)" class="p-1.5 text-red-600 hover:bg-red-50 rounded-lg" title="Hapus">
+                                                    <TrashIcon class="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <span class="text-xs text-gray-400">CPMK ID: {{ sc.cpmk_id }}</span>
-                                </div>
+                                </TransitionGroup>
                             </div>
 
                             <!-- Empty State -->
@@ -749,6 +859,30 @@ Semakin detail, semakin akurat hasil AI!"
 
                     <!-- PLAN TAB (16 Pertemuan) -->
                     <div v-show="activeTab === 'plan'" class="p-6">
+                        <!-- Bobot Summary -->
+                        <div class="flex flex-col md:flex-row items-center justify-between bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm sticky top-0 z-20 backdrop-blur-md bg-opacity-90">
+                            <div class="flex items-center gap-4 mb-3 md:mb-0">
+                                <div class="p-3 rounded-full" :class="totalBobot === 100 ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'">
+                                    <ChartPieIcon class="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-gray-800 text-lg">Total Bobot Penilaian</h4>
+                                    <p class="text-xs text-gray-500">Bobot otomatis digenerate AI maksimal 100%.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="text-3xl font-black tracking-tight" :class="totalBobot === 100 ? 'text-green-600' : 'text-orange-500'">
+                                    {{ totalBobot }}<span class="text-lg text-gray-400">%</span>
+                                </div>
+                                <div v-if="totalBobot === 100" class="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded-full shadow-lg shadow-green-500/30 flex items-center gap-1">
+                                    <CheckBadgeIcon class="w-4 h-4" /> PAS
+                                </div>
+                                <div v-else class="px-3 py-1 bg-orange-500 text-white text-xs font-bold rounded-full shadow-lg shadow-orange-500/30 flex items-center gap-1">
+                                    <ExclamationCircleIcon class="w-4 h-4" /> Belum 100%
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="space-y-4">
                             <Disclosure v-for="(detail, index) in form.details" :key="index" v-slot="{ open }">
                                 <div class="border rounded-xl overflow-hidden" :class="detail.materi ? 'border-green-200 bg-green-50/50' : 'border-gray-200'">
@@ -764,8 +898,11 @@ Semakin detail, semakin akurat hasil AI!"
                                                 {{ detail.pertemuan }}
                                             </span>
                                             <div class="text-left">
-                                                <div class="font-bold text-gray-900">
-                                                    Pertemuan {{ detail.pertemuan }}
+                                                <div class="font-bold text-gray-900 flex flex-wrap items-center gap-2">
+                                                    <span>Pertemuan {{ detail.pertemuan }}</span>
+                                                    <span v-if="detail.bobot_nilai > 0" class="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] rounded font-bold">
+                                                        {{ detail.bobot_nilai }}%
+                                                    </span>
                                                     <span v-if="detail.pertemuan === 8" class="ml-2 text-orange-600">(UTS)</span>
                                                     <span v-if="detail.pertemuan === 16" class="ml-2 text-red-600">(UAS)</span>
                                                 </div>

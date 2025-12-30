@@ -264,10 +264,8 @@ class RpsController extends Controller
                 // 1. Delete Details (Pertemuan) - automatically handled by cascade usually, but good to be explicit or if no cascade
                 $rps->details()->delete();
 
-                // 2. Delete Sub-CPMKs associated with this Mata Kuliah
-                // Warning: This deletes ALL Sub-CPMKs for this MK, even if used by older RPS? 
-                // Given the user request "delete smua data... sub cpmk", we will proceed.
-                \App\Models\SubCpmk::where('mata_kuliah_id', $mkId)->delete();
+                // 2. Delete Sub-CPMKs - REMOVED. Sub-CPMKs are now part of Kurikulum and should persist.
+                // \App\Models\SubCpmk::where('mata_kuliah_id', $mkId)->delete();
 
                 // 3. Delete RPS (Info Umum)
                 $rps->delete();
