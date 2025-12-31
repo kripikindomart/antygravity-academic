@@ -15,7 +15,8 @@ class RpsPdfController extends Controller
     {
         // Load all relationships needed for the PDF
         $rps->load([
-            'mataKuliah.prodi',
+            'mataKuliah.prodi.kaprodi',
+            'mataKuliah.prodi.gkm',
             'mataKuliah.cpmks.cpl',
             'mataKuliah.cpmks.subCpmks',
             'details.subCpmk',
@@ -53,14 +54,31 @@ class RpsPdfController extends Controller
             'cpmks' => $cpmks,
             'subCpmks' => $subCpmks,
             'cplKategori' => $cplKategori,
-            'cplKategori' => $cplKategori,
             'details' => $rps->details->sortBy('pertemuan')->values(),
             'tanggal' => now()->translatedFormat('d F Y'),
-            // Placeholder for signatures - can be configured later
-            'pengembang' => $rps->dosen?->name ?? 'Dosen Pengampu',
-            'koordinator' => $rps->mataKuliah->prodi->koordinator ?? '-',
-            'kaprodi' => $rps->mataKuliah->prodi->kaprodi ?? 'Ketua Program Studi',
+            // Pengembang RPS - from pivot table (use <br> for line breaks in PDF)
+            'pengembang' => $rps->pengembang->count() > 0
+                ? $rps->pengembang->map(fn($d) => $d->nama_gelar)->implode('<br>')
+                : ($rps->dosen?->name ?? 'Dosen Pengampu'),
+            // Dosen Pengampu (separate field for the schedule)
+            'dosen_pengampu' => $rps->pengembang->count() > 0
+                ? $rps->pengembang->map(fn($d) => $d->nama_gelar)->implode('<br>')
+                : ($rps->dosen?->name ?? '-'),
+            'koordinator' => $rps->mataKuliah->prodi?->gkm?->nama_gelar ?? '-',
+            'kaprodi' => $rps->mataKuliah->prodi?->kaprodi?->nama_gelar ?? 'Ketua Program Studi',
+            'is_kaprodi_plt' => $rps->mataKuliah->prodi?->is_kaprodi_plt ?? false,
         ];
+
+        // Generate QR Code
+        $verificationUrl = route('rps.verify', $rps->verification_code);
+        $data['qrCode'] = base64_encode(
+            \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
+                ->size(100)
+                ->errorCorrection('H')
+                ->generate($verificationUrl)
+        );
+        $data['verificationUrl'] = $verificationUrl;
+        $data['verificationCode'] = $rps->verification_code;
 
         // Add rowspans calculation
         $data['rowspans'] = $this->calculateRowspans($data['details']);
@@ -85,7 +103,8 @@ class RpsPdfController extends Controller
     {
         // Same loading as generate
         $rps->load([
-            'mataKuliah.prodi',
+            'mataKuliah.prodi.kaprodi',
+            'mataKuliah.prodi.gkm',
             'mataKuliah.cpmks.cpl',
             'mataKuliah.cpmks.subCpmks',
             'details.subCpmk',
@@ -121,10 +140,35 @@ class RpsPdfController extends Controller
             'cplKategori' => $cplKategori,
             'details' => $rps->details->sortBy('pertemuan')->values(),
             'tanggal' => now()->translatedFormat('d F Y'),
-            'pengembang' => $rps->dosen?->name ?? 'Dosen Pengampu',
-            'koordinator' => $rps->mataKuliah->prodi->koordinator ?? '-',
-            'kaprodi' => $rps->mataKuliah->prodi->kaprodi ?? 'Ketua Program Studi',
+            // Pengembang RPS - from pivot table
+            'pengembang' => $rps->pengembang->count() > 0
+                ? $rps->pengembang->map(fn($d) => $d->nama_gelar)->implode('<br>')
+                : ($rps->dosen?->name ?? 'Dosen Pengampu'),
+            // Dosen Pengampu (separate field for the schedule)
+            'dosen_pengampu' => $rps->pengembang->count() > 0
+                ? $rps->pengembang->map(fn($d) => $d->nama_gelar)->implode('<br>')
+                : ($rps->dosen?->name ?? '-'),
+            'koordinator' => $rps->mataKuliah->prodi?->gkm?->nama_gelar ?? '-',
+            'kaprodi' => $rps->mataKuliah->prodi?->kaprodi?->nama_gelar ?? 'Ketua Program Studi',
+            'is_kaprodi_plt' => $rps->mataKuliah->prodi?->is_kaprodi_plt ?? false,
         ];
+
+        // Ensure Verification Code Exists
+        if (empty($rps->verification_code)) {
+            $rps->verification_code = $rps->generateVerificationCode();
+            $rps->saveQuietly(); // Save without triggering events if possible, or just save()
+        }
+
+        // Generate QR Code
+        $verificationUrl = route('rps.verify', $rps->verification_code);
+        $data['qrCode'] = base64_encode(
+            \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
+                ->size(100)
+                ->errorCorrection('H')
+                ->generate($verificationUrl)
+        );
+        $data['verificationUrl'] = $verificationUrl;
+        $data['verificationCode'] = $rps->verification_code;
 
         // Add rowspans calculation
         $data['rowspans'] = $this->calculateRowspans($data['details']);

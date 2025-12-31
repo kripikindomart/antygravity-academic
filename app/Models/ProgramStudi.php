@@ -13,12 +13,35 @@ class ProgramStudi extends Model
         'kode',
         'nama',
         'jenjang',
+        'visi',
+        'misi',
+        'tujuan',
         'akreditasi',
+        'no_sk_akreditasi',
+        'tanggal_akreditasi',
+        'masa_berlaku_akreditasi',
+        'sertifikat_akreditasi',
+        'email',
+        'telepon',
+        'alamat',
+        'website',
+        'logo',
+        'kaprodi_id',
+        'is_kaprodi_plt',
+        'sekretaris_id',
+        'is_sekretaris_plt',
+        'gkm_id',
+        'staf_prodi',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_kaprodi_plt' => 'boolean',
+        'is_sekretaris_plt' => 'boolean',
+        'tanggal_akreditasi' => 'date',
+        'masa_berlaku_akreditasi' => 'date',
+        'staf_prodi' => 'array',
     ];
 
     /**
@@ -26,7 +49,7 @@ class ProgramStudi extends Model
      */
     public function dosens()
     {
-        return $this->hasMany(Dosen::class);
+        return $this->hasMany(Dosen::class, 'prodi_id');
     }
 
     /**
@@ -34,7 +57,7 @@ class ProgramStudi extends Model
      */
     public function mahasiswas()
     {
-        return $this->hasMany(Mahasiswa::class);
+        return $this->hasMany(Mahasiswa::class, 'prodi_id');
     }
 
     /**
@@ -46,23 +69,27 @@ class ProgramStudi extends Model
     }
 
     /**
-     * Get active kaprodi.
+     * Get Kaprodi (direct FK relation).
      */
     public function kaprodi()
     {
-        return $this->hasOne(JabatanStruktural::class)
-            ->where('jabatan', 'kaprodi')
-            ->where('is_active', true);
+        return $this->belongsTo(Dosen::class, 'kaprodi_id');
     }
 
     /**
-     * Get active sekprodi.
+     * Get Sekretaris Prodi (direct FK relation).
      */
-    public function sekprodi()
+    public function sekretaris()
     {
-        return $this->hasOne(JabatanStruktural::class)
-            ->where('jabatan', 'sekprodi')
-            ->where('is_active', true);
+        return $this->belongsTo(Dosen::class, 'sekretaris_id');
+    }
+
+    /**
+     * Get Gugus Kendali Mutu (direct FK relation).
+     */
+    public function gkm()
+    {
+        return $this->belongsTo(Dosen::class, 'gkm_id');
     }
 
     /**

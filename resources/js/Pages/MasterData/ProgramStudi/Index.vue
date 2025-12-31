@@ -69,14 +69,17 @@
                                 </td>
                                 <td class="px-6 py-4 text-gray-600 dark:text-gray-400">{{ prodi.akreditasi || '-' }}</td>
                                 <td class="px-6 py-4 text-gray-600 dark:text-gray-400">
-                                    <span v-if="prodi.kaprodi?.dosen">{{ prodi.kaprodi.dosen.nama }}</span>
+                                    <template v-if="prodi.kaprodi">
+                                        <span>{{ prodi.kaprodi.nama_gelar || formatDosenName(prodi.kaprodi) }}</span>
+                                        <span v-if="prodi.is_kaprodi_plt" class="ml-1 text-xs text-amber-600 font-bold">(PLT)</span>
+                                    </template>
                                     <span v-else class="text-gray-400 italic">Belum diset</span>
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-end gap-1">
-                                        <button @click="openModal(prodi)" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="Edit">
+                                        <Link :href="route('prodi.edit', prodi.id)" class="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="Edit">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                                        </button>
+                                        </Link>
                                         <button @click="confirmDelete(prodi)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Hapus">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                         </button>
@@ -234,6 +237,15 @@ const getJenjangClass = (jenjang) => {
         S3: 'bg-purple-100 text-purple-700',
     };
     return classes[jenjang] || 'bg-gray-100 text-gray-700';
+};
+
+const formatDosenName = (dosen) => {
+    if (!dosen) return '';
+    let name = '';
+    if (dosen.gelar_depan) name += dosen.gelar_depan + ' ';
+    name += dosen.nama || '';
+    if (dosen.gelar_belakang) name += ', ' + dosen.gelar_belakang;
+    return name;
 };
 
 const openModal = (item = null) => {

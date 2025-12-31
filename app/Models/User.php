@@ -119,4 +119,12 @@ class User extends Authenticatable
             ->withPivot('is_primary')
             ->withTimestamps();
     }
+
+    /**
+     * Get the dosen profile associated with the user.
+     */
+    public function dosen()
+    {
+        return $this->hasOne(Dosen::class);
+    }
 }

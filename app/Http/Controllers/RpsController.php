@@ -34,22 +34,41 @@ class RpsController extends Controller
         $query = MataKuliah::query()
             ->with([
                 'prodi',
-                'rps' => function ($q) {
-                    $q->latest(); // Get latest RPS if multiple
-                }
-            ])
-            ->when($request->search, function ($q, $search) {
-                $q->where('nama', 'like', "%{$search}%")
-                    ->orWhere('kode', 'like', "%{$search}%");
-            })
-            ->when($prodiIds !== null, function ($q) use ($prodiIds) {
-                $q->whereIn('prodi_id', $prodiIds);
-            })
-            ->when($request->prodi_id, function ($q, $prodiId) {
-                $q->where('prodi_id', $prodiId);
-            });
+                'rps.dosen', // Creator
+                'rps.pengembang', // Team Teaching (Dosen objects directly)
+            ]);
 
-        $mataKuliahs = $query->paginate(10)->withQueryString();
+        // Filter by Search
+        $query->when($request->search, function ($q, $search) {
+            $q->where(function ($sub) use ($search) {
+                $sub->where('nama', 'like', "%{$search}%")
+                    ->orWhere('kode', 'like', "%{$search}%");
+            });
+        });
+
+        // Filter by Prodi
+        $query->when($prodiIds !== null, function ($q) use ($prodiIds) {
+            $q->whereIn('prodi_id', $prodiIds);
+        });
+        $query->when($request->prodi_id, function ($q, $prodiId) {
+            $q->where('prodi_id', $prodiId);
+        });
+
+        // Filter by Status (Server-side)
+        if ($request->filter && $request->filter !== 'all') {
+            $status = $request->filter;
+            if ($status === 'none') {
+                $query->doesntHave('rps');
+            } else {
+                $query->whereHas('rps', function ($q) use ($status) {
+                    $q->where('approval_status', $status);
+                });
+            }
+        }
+
+        // Limit per page
+        $perPage = $request->input('per_page', 10);
+        $mataKuliahs = $query->paginate($perPage)->withQueryString();
 
         // Get prodis for filter dropdown
         if ($prodiIds !== null && count($prodiIds) > 0) {
@@ -58,14 +77,60 @@ class RpsController extends Controller
             $prodis = \App\Models\ProgramStudi::orderBy('nama')->get();
         }
 
+        // Get all Dosen for Developer Dropdown (Live Edit)
+        // All dosens can be selected, we use dosen_id in pivot table
+        $allDosens = \App\Models\Dosen::orderBy('nama')
+            ->get()
+            ->map(function ($d) {
+                return [
+                    'id' => $d->id, // dosen_id
+                    'nama_gelar' => $d->nama_gelar,
+                    'nama' => $d->nama,
+                ];
+            });
+
         return Inertia::render('Rps/Index', [
             'mataKuliahs' => $mataKuliahs,
             'prodis' => $prodis,
+            'allDosens' => $allDosens,
+            'canFilterProdi' => $prodiIds === null, // Admin can filter, others cannot
             'filters' => [
                 'search' => $request->search,
                 'prodi_id' => $request->prodi_id,
+                'filter' => $request->filter ?? 'all',
+                'per_page' => $perPage
             ],
         ]);
+    }
+
+    /**
+     * Live Update RPS Meta (Pengembang, Date)
+     */
+    public function updateMeta(Request $request, Rps $rps)
+    {
+        $validated = $request->validate([
+            'field' => 'required|in:pengembang,tanggal_penyusunan',
+            'value' => 'nullable',
+        ]);
+
+        if ($validated['field'] === 'pengembang') {
+            // Value expects array of dosen_ids
+            $dosenIds = $validated['value'] ?? [];
+            if (!is_array($dosenIds))
+                return response()->json(['message' => 'Invalid data'], 422);
+
+            // Filter empty values to prevent SQL errors
+            $dosenIds = array_filter($dosenIds, fn($id) => !empty($id) && is_numeric($id));
+
+            $rps->pengembang()->sync($dosenIds);
+            $msg = 'Pengembang RPS berhasil diperbarui';
+        } else {
+            // Tanggal Penyusunan
+            $rps->update(['tanggal_penyusunan' => $validated['value']]);
+            $msg = 'Tanggal penyusunan berhasil diperbarui';
+        }
+
+        return redirect()->back()->with('success', $msg);
     }
 
     public function create(Request $request)
@@ -112,6 +177,9 @@ class RpsController extends Controller
             'nomor' => 'RPS-' . time(), // Auto gen
         ]);
 
+        // Auto-populate Pengembang from Jadwal Dosen (Kelas MK Dosen)
+        $this->autoPopulatePengembangFromJadwal($rps);
+
         // Return JSON for AJAX calls (Magic Generator auto-create)
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
@@ -150,12 +218,26 @@ class RpsController extends Controller
             'cpmks_count' => $cpmks->count(),
         ]);
 
+        $user = auth()->user();
+        $prodi = $rps->mataKuliah->prodi;
+
+        $isAdmin = $user->hasAnyRole(['akademik', 'staff_prodi', 'admin', 'administrator', 'staf']);
+        $isGkm = $user->dosen?->id === $prodi?->gkm_id;
+        $isKaprodi = $user->dosen?->id === $prodi?->kaprodi_id;
+
         return Inertia::render('Rps/Form', [
             'rps' => $rps,
             'mataKuliah' => $mataKuliah,
             'availableCpmks' => $cpmks->values()->toArray(),
             'availableSubCpmks' => $subCpmks->values()->toArray(),
-            'can_approve' => auth()->user()->hasAnyRole(['akademik', 'staff_prodi']),
+            'permissions' => [
+                'can_approve' => $isAdmin || $isGkm || $isKaprodi,
+                'is_admin' => $isAdmin,
+                'is_gkm' => $isGkm,
+                'is_kaprodi' => $isKaprodi,
+            ],
+            // Keep old prop for backward compatibility if needed, but permissions object is better
+            'can_approve' => $isAdmin || $isGkm || $isKaprodi,
         ]);
     }
 
@@ -205,46 +287,140 @@ class RpsController extends Controller
     }
 
     /**
-     * Submit RPS for approval
+     * Submit RPS for approval (by Dosen)
      */
     public function submit(Rps $rps)
     {
-        if ($rps->status !== 'draft') {
-            return response()->json(['message' => 'RPS harus berstatus Draft untuk diajukan.'], 422);
+        if (!$rps->canBeSubmitted()) {
+            return response()->json(['message' => 'RPS harus berstatus Draft atau Revision untuk diajukan.'], 422);
         }
 
-        $rps->update(['status' => 'submitted']);
+        $rps->update(['approval_status' => Rps::STATUS_SUBMITTED]);
 
-        return response()->json(['message' => 'RPS berhasil diajukan untuk review.']);
+        return response()->json(['message' => 'RPS berhasil diajukan untuk review GKM.']);
     }
 
     /**
-     * Approve RPS (Kaprodi only)
+     * Approve RPS by GKM/Koordinator RMK
      */
-    public function approve(Rps $rps)
+    public function approveByGkm(Request $request, Rps $rps)
     {
-        // Bypass check for Akademik (Super Admin)
-        if ($rps->status !== 'submitted' && !auth()->user()->hasRole('akademik')) {
-            return response()->json(['message' => 'RPS harus berstatus Submitted untuk disetujui.'], 422);
+        if (!$rps->canBeApprovedByGkm()) {
+            return response()->json(['message' => 'RPS harus berstatus Submitted untuk di-review GKM.'], 422);
         }
 
-        $rps->update(['status' => 'approved']);
+        // Load prodi relationship to check GKM
+        $rps->load('mataKuliah.prodi');
+        $prodi = $rps->mataKuliah?->prodi;
+        $user = auth()->user();
 
-        return response()->json(['message' => 'RPS berhasil disetujui.']);
+        // Check if user is the assigned GKM for this prodi OR has admin role
+        $isGkm = $user->dosen?->id === $prodi?->gkm_id;
+        $isAdmin = $user->hasAnyRole(['akademik', 'admin', 'administrator', 'staf']);
+
+        if (!$isGkm && !$isAdmin) {
+            return response()->json(['message' => 'Anda bukan GKM untuk program studi ini.'], 403);
+        }
+
+        $gkmDosenId = $prodi?->gkm_id ?? $user->dosen?->id;
+
+        $rps->update([
+            'approval_status' => Rps::STATUS_GKM_APPROVED,
+            'approved_by_gkm_id' => $gkmDosenId,
+            'approved_by_gkm_at' => now(),
+            'gkm_notes' => $request->input('notes'),
+        ]);
+
+        return response()->json(['message' => 'RPS berhasil di-approve oleh GKM. Lanjut ke Kaprodi.']);
     }
 
     /**
-     * Reject RPS back to draft (Kaprodi with reason)
+     * Approve RPS by Kaprodi (Final Approval)
      */
-    public function reject(Request $request, Rps $rps)
+    public function approveByKaprodi(Request $request, Rps $rps)
     {
-        if ($rps->status !== 'submitted') {
-            return response()->json(['message' => 'RPS harus berstatus Submitted untuk ditolak.'], 422);
+        if (!$rps->canBeApprovedByKaprodi()) {
+            return response()->json(['message' => 'RPS harus sudah di-approve GKM terlebih dahulu.'], 422);
         }
 
-        $rps->update(['status' => 'draft']);
+        // Load prodi relationship to check Kaprodi
+        $rps->load('mataKuliah.prodi');
+        $prodi = $rps->mataKuliah?->prodi;
+        $user = auth()->user();
 
-        return response()->json(['message' => 'RPS dikembalikan ke Draft.']);
+        // Check if user is the assigned Kaprodi for this prodi OR has admin role
+        $isKaprodi = $user->dosen?->id === $prodi?->kaprodi_id;
+        $isAdmin = $user->hasAnyRole(['akademik', 'admin', 'administrator', 'staf']);
+
+        if (!$isKaprodi && !$isAdmin) {
+            return response()->json(['message' => 'Anda bukan Kaprodi untuk program studi ini.'], 403);
+        }
+
+        $kaprodiDosenId = $prodi?->kaprodi_id ?? $user->dosen?->id;
+
+        // Generate verification code
+        $verificationCode = $rps->generateVerificationCode();
+
+        $rps->update([
+            'approval_status' => Rps::STATUS_APPROVED,
+            'verification_code' => $verificationCode,
+            'approved_by_kaprodi_id' => $kaprodiDosenId,
+            'approved_by_kaprodi_at' => now(),
+            'kaprodi_notes' => $request->input('notes'),
+        ]);
+
+        return response()->json([
+            'message' => 'RPS berhasil disahkan.',
+            'verification_code' => $verificationCode,
+        ]);
+    }
+
+    /**
+     * Bypass approve (Admin/Staf Prodi only) - Skip GKM & Kaprodi steps
+     */
+    public function bypassApprove(Request $request, Rps $rps)
+    {
+        // Only allow admin or staf roles
+        $user = auth()->user();
+        if (!$user->hasAnyRole(['akademik', 'admin', 'administrator', 'staf'])) {
+            return response()->json(['message' => 'Anda tidak memiliki izin untuk bypass approval.'], 403);
+        }
+
+        // Generate verification code
+        $verificationCode = $rps->generateVerificationCode();
+
+        $rps->update([
+            'approval_status' => Rps::STATUS_APPROVED,
+            'verification_code' => $verificationCode,
+            'approved_by_gkm_at' => now(),
+            'approved_by_kaprodi_at' => now(),
+            'gkm_notes' => 'Bypass oleh ' . $user->name,
+            'kaprodi_notes' => 'Bypass oleh ' . $user->name,
+        ]);
+
+        return response()->json([
+            'message' => 'RPS berhasil di-approve (bypass).',
+            'verification_code' => $verificationCode,
+        ]);
+    }
+
+    /**
+     * Request revision (by GKM or Kaprodi)
+     */
+    public function requestRevision(Request $request, Rps $rps)
+    {
+        $request->validate(['notes' => 'required|string|min:10']);
+
+        if (!in_array($rps->approval_status, [Rps::STATUS_SUBMITTED, Rps::STATUS_GKM_APPROVED])) {
+            return response()->json(['message' => 'RPS tidak dalam status yang dapat diminta revisi.'], 422);
+        }
+
+        $rps->update([
+            'approval_status' => Rps::STATUS_REVISION,
+            'kaprodi_notes' => $request->input('notes'),
+        ]);
+
+        return response()->json(['message' => 'RPS dikembalikan untuk revisi.']);
     }
     /**
      * Delete RPS and all related data (Details, Sub-CPMKs)
@@ -275,6 +451,43 @@ class RpsController extends Controller
 
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal menghapus: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Auto-populate Pengembang RPS from Dosen Pengampu di Jadwal
+     * Only populates if no pengembang already set
+     */
+    protected function autoPopulatePengembangFromJadwal(Rps $rps): void
+    {
+        // Skip if pengembang already set
+        if ($rps->pengembang()->count() > 0) {
+            return;
+        }
+
+        // Get current active semester
+        $activeSemester = \App\Models\Semester::where('is_active', true)->first();
+        if (!$activeSemester) {
+            return;
+        }
+
+        // Find Dosen assigned to this Mata Kuliah in current semester's Jadwal
+        // kelas_matakuliah -> kelas_mk_dosen -> dosen
+        $dosenIds = \App\Models\KelasMkDosen::whereHas('kelasMatakuliah', function ($q) use ($rps, $activeSemester) {
+            $q->where('mata_kuliah_id', $rps->mata_kuliah_id)
+                ->whereHas('kelas', function ($k) use ($activeSemester) {
+                    $k->where('semester_id', $activeSemester->id);
+                });
+        })
+            ->pluck('dosen_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        // Sync to pivot table
+        if (!empty($dosenIds)) {
+            $rps->pengembang()->attach($dosenIds);
         }
     }
 }

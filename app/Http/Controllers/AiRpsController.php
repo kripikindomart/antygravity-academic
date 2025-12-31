@@ -66,11 +66,14 @@ class AiRpsController extends Controller
             ['mata_kuliah_id' => $mk->id, 'semester_id' => $activeSemester->id],
             [
                 'dosen_id' => Auth::id(),
-                'status' => 'draft',
+                'approval_status' => 'draft',
                 'nomor' => 'RPS-' . $mk->kode . '-' . $activeSemester->kode,
                 'tanggal_penyusunan' => now(),
             ]
         );
+
+        // Auto-populate Pengembang from Jadwal Dosen (if new RPS)
+        $this->autoPopulatePengembangFromJadwal($rps, $activeSemester);
 
         // Get ALL CPMKs with Sub-CPMKs
         $cpmks = Cpmk::where('mata_kuliah_id', $mk->id)
@@ -378,6 +381,38 @@ INSTRUKSI UTAMA (WAJIB DIPATUHI):
                 'success' => false,
                 'message' => 'Database Error: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Auto-populate Pengembang RPS from Dosen Pengampu di Jadwal
+     * Only populates if no pengembang already set
+     */
+    protected function autoPopulatePengembangFromJadwal(Rps $rps, $activeSemester): void
+    {
+        // Skip if pengembang already set
+        if ($rps->pengembang()->count() > 0) {
+            return;
+        }
+
+        // Find Dosen assigned to this Mata Kuliah in current semester's Jadwal
+        $dosenUserIds = \App\Models\KelasMkDosen::whereHas('kelasMatakuliah', function ($q) use ($rps, $activeSemester) {
+            $q->where('mata_kuliah_id', $rps->mata_kuliah_id)
+                ->whereHas('kelas', function ($k) use ($activeSemester) {
+                    $k->where('semester_id', $activeSemester->id);
+                });
+        })
+            ->with('dosen')
+            ->get()
+            ->pluck('dosen.user_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        // Sync to pivot table
+        if (!empty($dosenUserIds)) {
+            $rps->pengembang()->attach($dosenUserIds);
         }
     }
 }

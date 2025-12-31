@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ProgramStudi;
+use App\Models\Dosen;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,7 +15,7 @@ class ProgramStudiController extends Controller
     public function index(Request $request)
     {
         $query = ProgramStudi::query()
-            ->with(['kaprodi.dosen', 'sekprodi.dosen']);
+            ->with(['kaprodi', 'sekretaris', 'gkm']);
 
         if ($request->search) {
             $query->where(function ($q) use ($request) {
@@ -38,6 +39,25 @@ class ProgramStudiController extends Controller
     }
 
     /**
+     * Show edit form for a program studi.
+     */
+    public function edit(ProgramStudi $programStudi)
+    {
+        $programStudi->load(['kaprodi', 'sekretaris', 'gkm', 'dosens']);
+
+        // Get ALL active dosens from all prodis (Kaprodi/Sekprodi can be from any homebase - PLT case)
+        $dosens = Dosen::with('prodi:id,kode')
+            ->where('status', 'aktif')
+            ->orderBy('nama')
+            ->get(['id', 'prodi_id', 'nama', 'nidn', 'gelar_depan', 'gelar_belakang']);
+
+        return Inertia::render('MasterData/ProgramStudi/Edit', [
+            'programStudi' => $programStudi,
+            'dosens' => $dosens,
+        ]);
+    }
+
+    /**
      * Store a newly created program studi.
      */
     public function store(Request $request)
@@ -45,8 +65,25 @@ class ProgramStudiController extends Controller
         $validated = $request->validate([
             'kode' => ['required', 'string', 'max:20', 'unique:program_studis,kode'],
             'nama' => ['required', 'string', 'max:255'],
-            'jenjang' => ['required', 'in:S1,S2,S3'],
+            'jenjang' => ['required', 'in:D3,D4,S1,S2,S3'],
+            'visi' => ['nullable', 'string'],
+            'misi' => ['nullable', 'string'],
+            'tujuan' => ['nullable', 'string'],
             'akreditasi' => ['nullable', 'string', 'max:50'],
+            'no_sk_akreditasi' => ['nullable', 'string', 'max:100'],
+            'tanggal_akreditasi' => ['nullable', 'date'],
+            'masa_berlaku_akreditasi' => ['nullable', 'date'],
+            'email' => ['nullable', 'email', 'max:100'],
+            'telepon' => ['nullable', 'string', 'max:20'],
+            'alamat' => ['nullable', 'string'],
+            'website' => ['nullable', 'url', 'max:200'],
+            'kaprodi_id' => ['nullable', 'exists:dosens,id'],
+            'is_kaprodi_plt' => ['boolean'],
+            'sekretaris_id' => ['nullable', 'exists:dosens,id'],
+            'is_sekretaris_plt' => ['boolean'],
+            'gkm_id' => ['nullable', 'exists:dosens,id'],
+            'staf_prodi' => ['nullable', 'array'],
+            'staf_prodi.*' => ['string', 'max:200'],
             'is_active' => ['boolean'],
         ]);
 
@@ -64,8 +101,25 @@ class ProgramStudiController extends Controller
         $validated = $request->validate([
             'kode' => ['required', 'string', 'max:20', "unique:program_studis,kode,{$programStudi->id}"],
             'nama' => ['required', 'string', 'max:255'],
-            'jenjang' => ['required', 'in:S1,S2,S3'],
+            'jenjang' => ['required', 'in:D3,D4,S1,S2,S3'],
+            'visi' => ['nullable', 'string'],
+            'misi' => ['nullable', 'string'],
+            'tujuan' => ['nullable', 'string'],
             'akreditasi' => ['nullable', 'string', 'max:50'],
+            'no_sk_akreditasi' => ['nullable', 'string', 'max:100'],
+            'tanggal_akreditasi' => ['nullable', 'date'],
+            'masa_berlaku_akreditasi' => ['nullable', 'date'],
+            'email' => ['nullable', 'email', 'max:100'],
+            'telepon' => ['nullable', 'string', 'max:20'],
+            'alamat' => ['nullable', 'string'],
+            'website' => ['nullable', 'url', 'max:200'],
+            'kaprodi_id' => ['nullable', 'exists:dosens,id'],
+            'is_kaprodi_plt' => ['boolean'],
+            'sekretaris_id' => ['nullable', 'exists:dosens,id'],
+            'is_sekretaris_plt' => ['boolean'],
+            'gkm_id' => ['nullable', 'exists:dosens,id'],
+            'staf_prodi' => ['nullable', 'array'],
+            'staf_prodi.*' => ['string', 'max:200'],
             'is_active' => ['boolean'],
         ]);
 

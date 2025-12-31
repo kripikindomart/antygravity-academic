@@ -18,6 +18,10 @@ const props = defineProps({
     availableCpmks: { type: Array, default: () => [] },
     availableSubCpmks: { type: Array, default: () => [] },
     can_approve: Boolean,
+    permissions: { 
+        type: Object, 
+        default: () => ({ is_admin: false, is_gkm: false, is_kaprodi: false }) 
+    },
 });
 
 // Form State
@@ -289,23 +293,44 @@ const submitForApproval = async () => {
     try {
         await axios.post(route('rps.submit', form.id));
         showToast('RPS berhasil diajukan untuk review!', 'success');
-        window.location.reload();
+        router.reload({ preserveScroll: true });
     } catch (e) {
         showToast('Gagal mengajukan: ' + (e.response?.data?.message || e.message), 'error');
     }
 };
 
-// Approve RPS (Kaprodi/Akademik)
-const approveRps = async () => {
-    if (!confirm('Setujui RPS ini? Status akan berubah menjadi "Approved".')) {
-        return;
+// Approve RPS (Route depends on role/status)
+const approveRps = async (mode = 'normal') => {
+    let confirmMsg = 'Setujui RPS ini?';
+    let endpoint = '';
+
+    const status = props.rps?.status;
+    const p = props.permissions || {};
+
+    if (mode === 'bypass') {
+        confirmMsg = 'BYPASS APPROVE: RPS akan langsung disahkan tanpa review berjenjang. Lanjutkan?';
+        endpoint = route('rps.bypass-approve', form.id);
+    } else if (status === 'submitted') {
+        // GKM Stage
+        confirmMsg = 'Setujui sebagai GKM? Lanjut ke Kaprodi.';
+        endpoint = route('rps.approve-gkm', form.id);
+    } else if (status === 'gkm_approved') {
+        // Kaprodi Stage
+        confirmMsg = 'Sahkan RPS ini sebagai Kaprodi?';
+        endpoint = route('rps.approve-kaprodi', form.id);
+    } else {
+         showToast('Status RPS tidak, valid untuk approve.', 'error');
+         return;
     }
+
+    if (!confirm(confirmMsg)) return;
+
     try {
-        await axios.post(route('rps.approve', form.id));
-        showToast('RPS berhasil DISETUJUI! Dokumen kini final.', 'success');
-        window.location.reload();
+        await axios.post(endpoint, { notes: 'Approved via Web' });
+        showToast('RPS berhasil disetujui!', 'success');
+        router.reload({ preserveScroll: true });
     } catch (e) {
-        showToast('Gagal menyetujui: ' + (e.response?.data?.message || e.message), 'error');
+        showToast('Gagal: ' + (e.response?.data?.message || e.message), 'error');
     }
 };
 
@@ -315,9 +340,9 @@ const rejectRps = async () => {
         return;
     }
     try {
-        await axios.post(route('rps.reject', form.id));
-        showToast('RPS dikembalikan ke status DRAFT.', 'warning');
-        window.location.reload();
+        await axios.post(route('rps.request-revision', form.id), { notes: 'Revisi requested via Web' });
+        showToast('RPS dikembalikan ke status DRAFT/Revisi.', 'warning');
+        router.reload({ preserveScroll: true });
     } catch (e) {
         showToast('Gagal menolak: ' + (e.response?.data?.message || e.message), 'error');
     }
@@ -479,15 +504,29 @@ const deleteRps = () => {
                             Ajukan
                         </button>
                         
-                        <!-- APPROVAL ACTION (Kaprodi/Admin) -->
-                        <div v-if="(props.can_approve && props.rps?.status === 'submitted') || (props.can_approve && $page.props.auth.user.roles.includes('akademik'))" class="flex items-center gap-2">
-                            <button v-if="props.rps?.status !== 'approved'" @click="approveRps" type="button"
+                        <!-- APPROVAL ACTIONS -->
+                        <div v-if="props.can_approve" class="flex items-center gap-2">
+                             
+                            <!-- Bypass for Admin -->
+                            <button v-if="props.permissions?.is_admin && props.rps?.status !== 'approved'" 
+                                @click="approveRps('bypass')" type="button"
+                                class="px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2"
+                                title="Admin Bypass">
+                                <SparklesIcon class="w-5 h-5" />
+                                Bypass
+                            </button>
+
+                            <!-- Normal Approve -->
+                            <button v-if="(props.rps?.status === 'submitted' && (permissions?.is_gkm || permissions?.is_admin)) || (props.rps?.status === 'gkm_approved' && (permissions?.is_kaprodi || permissions?.is_admin))" 
+                                @click="approveRps('normal')" type="button"
                                 class="px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2">
                                 <CheckBadgeIcon class="w-5 h-5" />
-                                {{ props.rps?.status === 'draft' ? 'Direct Approve' : 'Setujui' }}
+                                {{ props.rps?.status === 'gkm_approved' ? 'Sah-kan (Kaprodi)' : 'Setujui (GKM)' }}
                             </button>
                             
-                            <button v-if="props.rps?.status !== 'draft'" @click="rejectRps" type="button"
+                            <!-- Reject/Revision -->
+                            <button v-if="props.rps?.status !== 'draft' && props.rps?.status !== 'approved'" 
+                                @click="rejectRps" type="button"
                                 class="px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-all shadow-lg flex items-center gap-2">
                                 <ExclamationCircleIcon class="w-5 h-5" />
                                 Revisi

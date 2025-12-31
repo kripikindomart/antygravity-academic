@@ -182,14 +182,23 @@
         <tr>
             <td colspan="2" style="height: 60px; vertical-align: bottom; text-align: center;">
                 <br><br>
-                <u>{{ $pengembang }}</u>
+                <u>{!! $pengembang !!}</u>
             </td>
             <td colspan="2" style="vertical-align: bottom; text-align: center;">
                 <br><br>
                 <u>{{ $koordinator }}</u>
             </td>
             <td colspan="2" style="vertical-align: bottom; text-align: center;">
-                <br><br>
+                <br>
+                @if(isset($qrCode))
+                    <img src="data:image/svg+xml;base64,{{ $qrCode }}" width="60" height="60"><br>
+                    <div style="font-size: 7pt; font-style: italic; margin-top: 2px;">
+                        Dokumen ini telah disahkan secara elektronik
+                    </div>
+                    <span style="font-size: 7pt; color: #555;">(Verifikasi: {{ $verificationCode }})</span><br>
+                @else
+                    <br><br>
+                @endif
                 <u>{{ $kaprodi }}</u>
             </td>
         </tr>
@@ -258,7 +267,7 @@
         {{-- DOSEN PENGAMPU --}}
         <tr>
             <td colspan="2" class="bg-sub-header">Dosen Pengampu</td>
-            <td colspan="5">{{ $pengembang }}</td>
+            <td colspan="5">{!! $dosen_pengampu ?? $pengembang !!}</td>
         </tr>
 
     </table>

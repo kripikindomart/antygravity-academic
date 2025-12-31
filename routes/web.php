@@ -22,6 +22,9 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
+// Public routes (no auth required)
+Route::get('/verify/{code}', [\App\Http\Controllers\RpsVerificationController::class, 'verify'])->name('rps.verify');
+
 // Authenticated routes
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
@@ -68,6 +71,7 @@ Route::middleware('auth')->group(function () {
     // Master Data - Program Studi
     Route::prefix('prodi')->name('prodi.')->middleware('permission:prodi.view')->group(function () {
         Route::get('/', [ProgramStudiController::class, 'index'])->name('index');
+        Route::get('/{programStudi}/edit', [ProgramStudiController::class, 'edit'])->name('edit')->middleware('permission:prodi.edit');
         Route::post('/', [ProgramStudiController::class, 'store'])->name('store')->middleware('permission:prodi.create');
         Route::put('/{programStudi}', [ProgramStudiController::class, 'update'])->name('update')->middleware('permission:prodi.edit');
         Route::delete('/{programStudi}', [ProgramStudiController::class, 'destroy'])->name('destroy')->middleware('permission:prodi.delete');
@@ -154,8 +158,23 @@ Route::middleware('auth')->group(function () {
         Route::post('/{kurikulum}/duplicate', [\App\Http\Controllers\KurikulumController::class, 'duplicate'])->name('duplicate')->middleware('permission:kurikulum.create');
     });
 
+    // RPS Settings (Must act before resource to valid conflict if ID usage)
+    Route::get('/rps-settings', [\App\Http\Controllers\RpsSettingController::class, 'index'])->name('rps-settings.index');
+    Route::post('/rps-settings', [\App\Http\Controllers\RpsSettingController::class, 'update'])->name('rps-settings.update');
+
     // RPS Module - parameter set to 'rps' to match controller $rps variable
     Route::resource('rps', \App\Http\Controllers\RpsController::class)->parameters(['rps' => 'rps']);
+
+    // RPS Approval Workflow Routes
+    Route::prefix('rps/{rps}')->name('rps.')->group(function () {
+        Route::post('/submit', [\App\Http\Controllers\RpsController::class, 'submit'])->name('submit');
+        Route::post('/approve-gkm', [\App\Http\Controllers\RpsController::class, 'approveByGkm'])->name('approve-gkm');
+        Route::post('/approve-kaprodi', [\App\Http\Controllers\RpsController::class, 'approveByKaprodi'])->name('approve-kaprodi');
+        Route::post('/bypass-approve', [\App\Http\Controllers\RpsController::class, 'bypassApprove'])->name('bypass-approve');
+        Route::post('/request-revision', [\App\Http\Controllers\RpsController::class, 'requestRevision'])->name('request-revision');
+        Route::put('/meta', [\App\Http\Controllers\RpsController::class, 'updateMeta'])->name('update-meta');
+    });
+
     // AI RPS Generator
     Route::post('/ai/settings', [App\Http\Controllers\AiRpsController::class, 'storeSettings'])->name('ai.settings');
     Route::post('/ai/generate-rps', [App\Http\Controllers\AiRpsController::class, 'generate'])->name('ai.generate-rps');
@@ -170,9 +189,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/rps/{rps}/pdf/preview', [\App\Http\Controllers\RpsPdfController::class, 'preview'])->name('rps.pdf.preview');
 
     // RPS Submit/Approve Workflow
-    Route::post('/rps/{rps}/submit', [\App\Http\Controllers\RpsController::class, 'submit'])->name('rps.submit');
-    Route::post('/rps/{rps}/approve', [\App\Http\Controllers\RpsController::class, 'approve'])->name('rps.approve');
-    Route::post('/rps/{rps}/reject', [\App\Http\Controllers\RpsController::class, 'reject'])->name('rps.reject');
+    // RPS Submit/Approve Workflow routes are already defined in the prefix group above
 
     // Kelas Module
     Route::resource('kelas', \App\Http\Controllers\KelasController::class)->parameters(['kelas' => 'kelas']);
