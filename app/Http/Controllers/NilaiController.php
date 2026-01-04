@@ -17,26 +17,59 @@ class NilaiController extends Controller
     {
         $user = Auth::user();
 
-        // Find classes where user is lecturer
-        // Adjust relation name based on User model. Assuming 'kelasMkDosens' exists or query manually.
-        // If User doesn't have relation, use manual join.
-        $query = KelasMatakuliah::whereHas('dosens', function ($q) use ($user) {
-            $q->where('dosen_id', $user->id); // Assuming simple link or Dosen model link. 
-            // If user->dosen relation exists: $user->dosen->id. 
-            // For now assuming User ID is Dosen ID or linked. 
-            // Safety: Use whereHas 'dosens' table.
-        })->with(['kelas', 'mataKuliah', 'rekapNilais']);
+        // Determine user type and filter accordingly
+        $isAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+        $isAkademik = $user->isAkademik();
+        $isStaffProdi = $user->isStaffProdi() && !$isAkademik;
+        $isDosen = $user->isDosen() && !$isAkademik && !$isStaffProdi;
+
+        // Get dosen_id if user is linked to dosen
+        $dosenId = $user->dosen?->id;
+
+        $query = KelasMatakuliah::query()
+            ->with(['kelas.prodi', 'kelas.semester', 'mataKuliah', 'dosens.dosen']);
+
+        // Apply filters based on user role
+        if ($isDosen && $dosenId) {
+            // Dosen: only show their classes
+            $query->whereHas('dosens', function ($q) use ($dosenId) {
+                $q->where('dosen_id', $dosenId);
+            });
+        } elseif ($isStaffProdi) {
+            // Staff Prodi: show classes in their prodi
+            $userProdiIds = $user->prodis()->pluck('program_studis.id');
+            $query->whereHas('kelas', function ($q) use ($userProdiIds) {
+                $q->whereIn('prodi_id', $userProdiIds);
+            });
+        } elseif ($isAdmin || $isAkademik) {
+            // Admin/Akademik: show all classes (no filter)
+        } else {
+            // Unknown role - show nothing
+            $query->whereRaw('1 = 0');
+        }
+
+        // Filter by active semester only
+        $query->whereHas('kelas.semester', function ($q) {
+            $q->where('is_active', true);
+        });
 
         if ($request->search) {
-            $query->whereHas('mataKuliah', function ($q) use ($request) {
-                $q->where('nama', 'like', "%{$request->search}%");
+            $query->where(function ($q) use ($request) {
+                $q->whereHas('mataKuliah', function ($sub) use ($request) {
+                    $sub->where('nama', 'like', "%{$request->search}%")
+                        ->orWhere('kode', 'like', "%{$request->search}%");
+                })->orWhereHas('kelas', function ($sub) use ($request) {
+                    $sub->where('nama', 'like', "%{$request->search}%");
+                });
             });
         }
 
-        $items = $query->paginate(10);
+        $items = $query->orderBy('created_at', 'desc')->paginate(10);
 
         return Inertia::render('Kelas/Nilai/Index', [
             'items' => $items,
+            'filters' => $request->only(['search']),
+            'userRole' => $isAdmin ? 'admin' : ($isAkademik ? 'akademik' : ($isStaffProdi ? 'staff_prodi' : 'dosen')),
         ]);
     }
 
