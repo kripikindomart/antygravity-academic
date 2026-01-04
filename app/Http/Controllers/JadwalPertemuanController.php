@@ -150,7 +150,8 @@ class JadwalPertemuanController extends Controller
     }
 
     /**
-     * Show MK Schedule Page (Dedicated)
+     * Show MK Schedule Page (Dedicated) with Real-time Conflict Detection
+     * Checks 3 types: Dosen Bentrok, Ruangan Bentrok, Kelas Bentrok
      */
     public function indexMk(KelasMatakuliah $kelasMatakuliah)
     {
@@ -162,7 +163,90 @@ class JadwalPertemuanController extends Controller
         })
             ->with(['dosen', 'ruangan', 'jadwal', 'jurnal'])
             ->orderBy('pertemuan_ke')
+            ->orderBy('pertemuan_ke')
             ->get();
+
+        $trashedJadwals = JadwalPertemuan::onlyTrashed()
+            ->whereHas('jadwal', function ($q) use ($kelasMatakuliah) {
+                $q->where('mata_kuliah_id', $kelasMatakuliah->mata_kuliah_id)
+                    ->where('kelas_id', $kelasMatakuliah->kelas_id);
+            })
+            ->with(['dosen', 'ruangan', 'jadwal'])
+            ->orderBy('pertemuan_ke')
+            ->get();
+
+        // Add real-time conflict detection for each jadwal
+        $kelasId = $kelasMatakuliah->kelas_id;
+        $mkId = $kelasMatakuliah->mata_kuliah_id;
+
+        $jadwals = $jadwals->map(function ($jadwal) use ($kelasId, $mkId) {
+            $hasConflict = false;
+            $conflictMessages = [];
+
+            if ($jadwal->tanggal && $jadwal->jadwal) {
+                $jamMulai = substr($jadwal->jadwal->jam_mulai ?? '00:00', 0, 5);
+                $jamSelesai = substr($jadwal->jadwal->jam_selesai ?? '23:59', 0, 5);
+
+                // === 1. KELAS BENTROK (Same class, Different MK at same time) ===
+                $kelasConflict = JadwalPertemuan::where('tanggal', $jadwal->tanggal)
+                    ->where('id', '!=', $jadwal->id)
+                    ->whereHas('jadwal', function ($q) use ($kelasId, $mkId, $jamMulai, $jamSelesai) {
+                        $q->where('kelas_id', $kelasId)  // SAME class
+                            ->where('mata_kuliah_id', '!=', $mkId)  // Different MK
+                            ->where('jam_mulai', '<', $jamSelesai)
+                            ->where('jam_selesai', '>', $jamMulai);
+                    })
+                    ->with('jadwal.mataKuliah')
+                    ->first();
+
+                if ($kelasConflict) {
+                    $hasConflict = true;
+                    $conflictMessages[] = 'Kelas bentrok: ' . ($kelasConflict->jadwal?->mataKuliah?->nama ?? 'MK Lain');
+                }
+
+                // === 2. DOSEN BENTROK (Any class with same dosen at same time) ===
+                if ($jadwal->dosen_id) {
+                    $dosenConflict = JadwalPertemuan::where('tanggal', $jadwal->tanggal)
+                        ->where('dosen_id', $jadwal->dosen_id)
+                        ->where('id', '!=', $jadwal->id)
+                        ->whereHas('jadwal', function ($q) use ($kelasId, $jamMulai, $jamSelesai) {
+                            $q->where('kelas_id', '!=', $kelasId)
+                                ->where('jam_mulai', '<', $jamSelesai)
+                                ->where('jam_selesai', '>', $jamMulai);
+                        })
+                        ->with('jadwal.mataKuliah', 'jadwal.kelas')
+                        ->first();
+
+                    if ($dosenConflict) {
+                        $hasConflict = true;
+                        $conflictMessages[] = 'Dosen bentrok: ' . ($dosenConflict->jadwal?->kelas?->nama ?? 'Kelas Lain') . ' - ' . ($dosenConflict->jadwal?->mataKuliah?->nama ?? 'MK');
+                    }
+                }
+
+                // === 3. RUANGAN BENTROK (Any class with same ruangan at same time) ===
+                if ($jadwal->ruangan_id && $jadwal->mode !== 'online') {
+                    $ruanganConflict = JadwalPertemuan::where('tanggal', $jadwal->tanggal)
+                        ->where('ruangan_id', $jadwal->ruangan_id)
+                        ->where('id', '!=', $jadwal->id)
+                        ->whereHas('jadwal', function ($q) use ($kelasId, $jamMulai, $jamSelesai) {
+                            $q->where('kelas_id', '!=', $kelasId)
+                                ->where('jam_mulai', '<', $jamSelesai)
+                                ->where('jam_selesai', '>', $jamMulai);
+                        })
+                        ->with('jadwal.mataKuliah', 'jadwal.kelas')
+                        ->first();
+
+                    if ($ruanganConflict) {
+                        $hasConflict = true;
+                        $conflictMessages[] = 'Ruangan bentrok: ' . ($ruanganConflict->jadwal?->kelas?->nama ?? 'Kelas Lain') . ' - ' . ($ruanganConflict->jadwal?->mataKuliah?->nama ?? 'MK');
+                    }
+                }
+            }
+
+            $jadwal->has_conflict = $hasConflict;
+            $jadwal->conflict_info = !empty($conflictMessages) ? implode(' | ', $conflictMessages) : null;
+            return $jadwal;
+        });
 
         // Available Dosens for Edit Dropdown
         $availableDosens = $kelasMatakuliah->dosens->map(fn($d) => $d->dosen)->filter();
@@ -172,7 +256,20 @@ class JadwalPertemuanController extends Controller
             'jadwals' => $jadwals,
             'availableDosens' => $availableDosens->values(),
             'availableRuangans' => $kelasMatakuliah->ruangans,
+            'trashedJadwals' => $trashedJadwals,
         ]);
+    }
+
+    public function restore($id)
+    {
+        JadwalPertemuan::onlyTrashed()->findOrFail($id)->restore();
+        return back()->with('success', 'Jadwal berhasil dipulihkan');
+    }
+
+    public function forceDelete($id)
+    {
+        JadwalPertemuan::onlyTrashed()->findOrFail($id)->forceDelete();
+        return back()->with('success', 'Jadwal dihapus permanen');
     }
 
     /**

@@ -25,6 +25,11 @@ class Jurnal extends Model
         'catatan',
         'dosen_id',
         'bukti_perkuliahan',
+        'file_materi', // JSON array of file paths
+    ];
+
+    protected $casts = [
+        'file_materi' => 'array',
     ];
 
     public function jadwalPertemuan(): BelongsTo

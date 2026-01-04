@@ -98,6 +98,9 @@
                                 <button v-if="!sem.is_active" @click="activateSemester(sem)" class="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-primary-600 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:border-primary-300 rounded-lg shadow-sm transition-all" title="Set Semester Aktif">
                                     Aktifkan
                                 </button>
+                                <button @click="openSemesterModal(sem)" class="p-1.5 text-gray-500 hover:text-primary-600 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:border-primary-300 rounded-lg shadow-sm transition-all" title="Edit Semester">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -216,6 +219,72 @@
                 </div>
             </div>
         </Teleport>
+
+        <!-- Semester Edit Modal -->
+        <Teleport to="body">
+            <Transition name="modal">
+                <div v-if="showSemesterModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showSemesterModal = false">
+                    <div class="absolute inset-0 bg-gray-900/70 backdrop-blur-sm"></div>
+                    <div class="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden animate-modal-in">
+                        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-xl font-bold text-white">Edit Semester</h2>
+                                        <p class="text-white/70 text-sm">{{ editingSemester?.nama }} {{ editingSemester?.tahun_akademik?.nama }}</p>
+                                    </div>
+                                </div>
+                                <button @click="showSemesterModal = false" class="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <form @submit.prevent="submitSemesterForm" class="p-6 space-y-5">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Mulai <span class="text-red-500">*</span></label>
+                                    <DatePicker v-model="semesterForm.tanggal_mulai" placeholder="Mulai..." />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tanggal Selesai <span class="text-red-500">*</span></label>
+                                    <DatePicker v-model="semesterForm.tanggal_selesai" placeholder="Selesai..." :min-date="semesterForm.tanggal_mulai" />
+                                </div>
+                            </div>
+
+                            <div class="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                                <h4 class="text-sm font-bold text-amber-800 dark:text-amber-400 mb-3 flex items-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                    Tanggal Ujian
+                                </h4>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Tanggal UTS</label>
+                                        <DatePicker v-model="semesterForm.tanggal_uts" placeholder="Tanggal UTS..." />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Tanggal UAS</label>
+                                        <DatePicker v-model="semesterForm.tanggal_uas" placeholder="Tanggal UAS..." />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <button type="button" @click="showSemesterModal = false" class="px-6 py-2.5 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">Batal</button>
+                                <button type="submit" :disabled="semesterForm.processing" class="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-xl disabled:opacity-50">
+                                    {{ semesterForm.processing ? 'Menyimpan...' : 'Simpan' }}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </AppLayout>
 </template>
 
@@ -239,7 +308,9 @@ const localFilters = ref({
 const isLoading = ref(false);
 const showModal = ref(false);
 const showDeleteModal = ref(false);
+const showSemesterModal = ref(false);
 const editingItem = ref(null);
+const editingSemester = ref(null);
 const itemToDelete = ref(null);
 
 const currentYear = new Date().getFullYear();
@@ -250,6 +321,15 @@ const form = useForm({
     tanggal_mulai: '',
     tanggal_selesai: '',
     is_active: false,
+});
+
+const semesterForm = useForm({
+    tanggal_mulai: '',
+    tanggal_selesai: '',
+    tanggal_uts: '',
+    tanggal_uas: '',
+    tanggal_input_nilai: '',
+    tanggal_deadline_nilai: '',
 });
 
 let searchTimeout = null;
@@ -301,6 +381,23 @@ const submitForm = () => {
 
 const activateSemester = (semester) => {
     router.post(`/master/tahun-akademik/semester/${semester.id}/activate`, {}, { preserveScroll: true });
+};
+
+const openSemesterModal = (semester) => {
+    editingSemester.value = semester;
+    semesterForm.tanggal_mulai = semester.tanggal_mulai?.split('T')[0] || '';
+    semesterForm.tanggal_selesai = semester.tanggal_selesai?.split('T')[0] || '';
+    semesterForm.tanggal_uts = semester.tanggal_uts?.split('T')[0] || '';
+    semesterForm.tanggal_uas = semester.tanggal_uas?.split('T')[0] || '';
+    semesterForm.tanggal_input_nilai = semester.tanggal_input_nilai?.split('T')[0] || '';
+    semesterForm.tanggal_deadline_nilai = semester.tanggal_deadline_nilai?.split('T')[0] || '';
+    showSemesterModal.value = true;
+};
+
+const submitSemesterForm = () => {
+    semesterForm.put(`/master/tahun-akademik/semester/${editingSemester.value.id}`, {
+        onSuccess: () => { showSemesterModal.value = false; semesterForm.reset(); },
+    });
 };
 
 const confirmDelete = (item) => {

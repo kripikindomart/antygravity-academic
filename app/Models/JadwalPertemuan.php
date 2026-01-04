@@ -19,6 +19,9 @@ class JadwalPertemuan extends Model
         'jam_mulai', // Override time
         'jam_selesai', // Override time
         'dosen_id',
+        'dosen_jam_masuk', // Dosen attendance
+        'dosen_jam_keluar', // Dosen attendance
+        'dosen_hadir', // Dosen attendance flag
         'ruangan_id',
         'tipe', // Kuliah, UTS, UAS
         'status', // Terjadwal, Selesai, Dibatalkan
@@ -33,6 +36,7 @@ class JadwalPertemuan extends Model
         'pertemuan_ke' => 'integer',
         'sesi_mulai' => 'integer',
         'sesi_selesai' => 'integer',
+        'dosen_hadir' => 'boolean',
     ];
 
     // Relationships

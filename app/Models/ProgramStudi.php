@@ -53,6 +53,14 @@ class ProgramStudi extends Model
     }
 
     /**
+     * Get kelas for this program studi.
+     */
+    public function kelas()
+    {
+        return $this->hasMany(Kelas::class, 'prodi_id');
+    }
+
+    /**
      * Get mahasiswas for this program studi.
      */
     public function mahasiswas()

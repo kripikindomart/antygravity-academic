@@ -1,12 +1,12 @@
 <script setup>
 import { ref, computed, reactive, watch } from 'vue';
-import { router, usePage, Head, Link } from '@inertiajs/vue3';
+import { router, usePage, Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../../Components/Layout/AppLayout.vue';
 import { 
     CalendarDaysIcon, UserIcon, ClockIcon, PencilSquareIcon, 
     TrashIcon, CheckCircleIcon, XMarkIcon, ChevronLeftIcon,
     BookOpenIcon, ExclamationTriangleIcon, WifiIcon, BuildingOfficeIcon,
-    CheckIcon, Squares2X2Icon
+    CheckIcon, Squares2X2Icon, PlusIcon
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -14,7 +14,10 @@ const props = defineProps({
     jadwals: Array,
     availableDosens: Array,
     availableRuangans: Array,
+    trashedJadwals: Array,
 });
+
+const viewMode = ref('active'); // active, trash
 
 const page = usePage();
 
@@ -62,6 +65,52 @@ const selectAll = computed({
 
 // Bulk Action Modal
 const showBulkModal = ref(false);
+const showAddModal = ref(false); // Add Modal
+const addForm = useForm({
+    kelas_matakuliah_id: props.kelasMatakuliah.id,
+    pertemuan_ke: 1, // Will be updated on open
+    tanggal: '',
+    jam_mulai: '08:00',
+    jam_selesai: '10:00',
+    pertemuan_ke: 1, // Will be updated on open
+    tanggal: '',
+    jam_mulai: '08:00',
+    jam_selesai: '10:00',
+    ruangan_id: props.kelasMatakuliah?.ruangans?.[0]?.id || null, // Default to first assigned room
+    dosen_id: props.kelasMatakuliah?.dosens?.[0]?.dosen_id || null, // Default to first assigned dosen
+    mode: 'offline', // Default
+    materi: '',
+});
+
+watch(() => addForm.mode, (val) => {
+    if (val === 'online') {
+        addForm.ruangan_id = null;
+    } else if (!addForm.ruangan_id && props.kelasMatakuliah?.ruangans?.length > 0) {
+        // Auto-select first room if switching back to offline/hybrid and no room selected
+        addForm.ruangan_id = props.kelasMatakuliah.ruangans[0].id;
+    }
+});
+
+const openAddModal = () => {
+    // Calculate next pertemuan
+    const max = props.jadwals?.length 
+        ? Math.max(...props.jadwals.map(j => j.pertemuan_ke)) 
+        : 0;
+    addForm.pertemuan_ke = max + 1;
+    showAddModal.value = true;
+};
+
+const submitAdd = () => {
+    addForm.post(route('kelas.store-manual-jadwal', props.kelasMatakuliah.kelas_id), {
+        onSuccess: () => {
+            showAddModal.value = false;
+            addForm.reset('tanggal', 'materi');
+            showToast('Pertemuan berhasil ditambahkan');
+        },
+        onError: () => showToast('Gagal menambahkan pertemuan', 'error'),
+    });
+};
+
 const bulkAction = ref(''); // 'dosen', 'tipe', 'mode', 'tanggal'
 const bulkForm = reactive({
     dosen_id: null,
@@ -236,6 +285,21 @@ const confirmDelete = () => {
     });
 };
 
+const restoreJadwal = (id) => {
+    router.post(route('jadwal-pertemuan.restore', id), {}, {
+        preserveScroll: true,
+        onSuccess: () => showToast('Jadwal dipulihkan'),
+    });
+};
+
+const forceDeleteJadwal = (id) => {
+    if(!confirm('Hapus permanen? Data tidak bisa kembali.')) return;
+    router.delete(route('jadwal-pertemuan.force-delete', id), {
+        preserveScroll: true,
+        onSuccess: () => showToast('Jadwal dihapus permanen'),
+    });
+};
+
 // Computed
 const mk = computed(() => props.kelasMatakuliah?.mata_kuliah);
 const kelas = computed(() => props.kelasMatakuliah?.kelas);
@@ -247,11 +311,27 @@ const stats = computed(() => {
     return { total, selesai, online, progress: total > 0 ? Math.round((selesai / total) * 100) : 0 };
 });
 
-// Get conflict info for a jadwal in the list (checks if same date as other jadwals in MK)
+// Get conflict info for a jadwal in the list
 const getConflictInfo = (jadwal) => {
+    // Check real-time conflict from backend (has_conflict attribute from indexMk)
+    if (jadwal.has_conflict) {
+        return {
+            type: 'conflict',
+            message: jadwal.conflict_info || 'Bentrok dengan kelas lain',
+        };
+    }
+    
+    // Check catatan field for unresolved conflicts (from generateJadwal)
+    if (jadwal.catatan && (jadwal.catatan.includes('bentrok') || jadwal.catatan.includes('BENTROK'))) {
+        return {
+            type: 'conflict',
+            message: jadwal.catatan,
+        };
+    }
+    
     if (!jadwal.tanggal) return null;
     const dateStr = jadwal.tanggal.split('T')[0];
-    // Find other jadwals on same date (excluding self)
+    // Find other jadwals on same date within same MK (unlikely but check)
     const conflicting = props.jadwals?.filter(j => 
         j.id !== jadwal.id && 
         j.tanggal?.split('T')[0] === dateStr
@@ -291,6 +371,10 @@ const getConflictInfo = (jadwal) => {
                                 <p class="text-white/80 mt-1">{{ kelas?.nama }} • {{ kelas?.semester?.nama }}</p>
                             </div>
                             <div class="flex gap-4 text-center">
+                                <button @click="openAddModal" class="px-4 py-2 bg-white text-indigo-600 rounded-xl font-bold shadow-lg hover:bg-indigo-50 transition flex flex-col items-center justify-center min-w-[80px]">
+                                    <PlusIcon class="w-6 h-6 mb-1" />
+                                    <span class="text-xs uppercase">Tambah</span>
+                                </button>
                                 <div class="bg-white/10 backdrop-blur px-4 py-2 rounded-xl">
                                     <div class="text-2xl font-black">{{ totalSks }}</div>
                                     <div class="text-xs text-indigo-200 uppercase">SKS</div>
@@ -345,10 +429,65 @@ const getConflictInfo = (jadwal) => {
                     <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
                         <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
                             <CalendarDaysIcon class="w-6 h-6 text-indigo-500" />
-                            Daftar Pertemuan
+                            {{ viewMode === 'active' ? 'Daftar Pertemuan' : 'Tong Sampah (Jadwal Dihapus)' }}
                         </h2>
+                        <div class="flex bg-gray-100 p-1 rounded-lg">
+                            <button @click="viewMode = 'active'" 
+                                class="px-3 py-1.5 rounded-md text-sm font-bold transition"
+                                :class="viewMode === 'active' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'">
+                                Aktif
+                            </button>
+                            <button @click="viewMode = 'trash'" 
+                                class="px-3 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1"
+                                :class="viewMode === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'">
+                                <TrashIcon class="w-4 h-4" /> Sampah
+                                <span v-if="trashedJadwals?.length" class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full text-[10px]">{{ trashedJadwals.length }}</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="overflow-x-auto">
+
+                    <!-- TRASH TABLE -->
+                    <div v-if="viewMode === 'trash'" class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-red-50/50 border-b border-red-100">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Pert</th>
+                                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Tanggal Dihapus</th>
+                                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Detail</th>
+                                    <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-if="!trashedJadwals || trashedJadwals.length === 0">
+                                    <td colspan="4" class="px-6 py-12 text-center text-gray-400 italic">
+                                        <TrashIcon class="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                        Trash kosong
+                                    </td>
+                                </tr>
+                                <tr v-for="tj in trashedJadwals" :key="tj.id" class="hover:bg-red-50/30 transition">
+                                    <td class="px-6 py-4 font-bold text-gray-800">{{ tj.pertemuan_ke }}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-600">{{ formatShortDate(tj.deleted_at) }}</td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-semibold">{{ formatShortDate(tj.tanggal) }}</div>
+                                        <div class="text-xs text-gray-500">{{ tj.jadwal?.hari }} {{ tj.jadwal?.jam_mulai?.substring(0,5) }}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <button @click="restoreJadwal(tj.id)" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition">
+                                                Restore
+                                            </button>
+                                            <button @click="forceDeleteJadwal(tj.id)" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition">
+                                                Hapus Permanen
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- ACTIVE TABLE -->
+                    <div v-else class="overflow-x-auto">
                         <table class="w-full">
                             <thead class="bg-gray-50 border-b border-gray-200">
                                 <tr>
@@ -657,6 +796,89 @@ const getConflictInfo = (jadwal) => {
                                 :class="{ 'from-gray-400 to-gray-500 cursor-not-allowed': hasConflict }">
                                 <CheckCircleIcon class="w-5 h-5" />
                                 {{ isSubmitting ? 'Menyimpan...' : hasConflict ? 'Ada Konflik' : 'Simpan' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- Add Modal -->
+        <Teleport to="body">
+            <Transition enter-active-class="ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100"
+                leave-active-class="ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">
+                <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @click.self="showAddModal = false">
+                    <div class="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
+                        <div class="px-6 py-5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-between">
+                            <h3 class="text-xl font-bold flex items-center gap-2">
+                                <PlusIcon class="w-6 h-6" /> Tambah Pertemuan
+                            </h3>
+                            <button @click="showAddModal = false" class="text-white/80 hover:text-white">
+                                <XMarkIcon class="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Pertemuan Ke-</label>
+                                <input type="number" v-model="addForm.pertemuan_ke" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 font-bold" required />
+                                <div v-if="addForm.errors.pertemuan_ke" class="text-red-500 text-xs mt-1">{{ addForm.errors.pertemuan_ke }}</div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Tanggal</label>
+                                <input type="date" v-model="addForm.tanggal" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                                <div v-if="addForm.errors.tanggal" class="text-red-500 text-xs mt-1">{{ addForm.errors.tanggal }}</div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Jam Mulai</label>
+                                    <input type="time" v-model="addForm.jam_mulai" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Jam Selesai</label>
+                                    <input type="time" v-model="addForm.jam_selesai" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Mode Pertemuan</label>
+                                <div class="flex gap-4">
+                                     <label class="flex items-center gap-2 px-4 py-2 border rounded-xl cursor-pointer" :class="addForm.mode === 'offline' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 ring-1 ring-emerald-500' : 'bg-white border-gray-200 hover:bg-gray-50'">
+                                        <input type="radio" v-model="addForm.mode" value="offline" class="w-4 h-4 text-emerald-600 focus:ring-emerald-500">
+                                        <span class="font-medium">Offline</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 px-4 py-2 border rounded-xl cursor-pointer" :class="addForm.mode === 'online' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:bg-gray-50'">
+                                        <input type="radio" v-model="addForm.mode" value="online" class="w-4 h-4 text-blue-600 focus:ring-blue-500">
+                                        <span class="font-medium">Online</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 px-4 py-2 border rounded-xl cursor-pointer" :class="addForm.mode === 'hybrid' ? 'bg-purple-50 border-purple-500 text-purple-700 ring-1 ring-purple-500' : 'bg-white border-gray-200 hover:bg-gray-50'">
+                                        <input type="radio" v-model="addForm.mode" value="hybrid" class="w-4 h-4 text-purple-600 focus:ring-purple-500">
+                                        <span class="font-medium">Hybrid</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div v-if="addForm.mode !== 'online'">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Ruangan</label>
+                                <select v-model="addForm.ruangan_id" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500">
+                                    <option :value="null">-- Pilih Ruangan (Opsional) --</option>
+                                    <option v-for="r in availableRuangans" :key="r.id" :value="r.id">{{ r.nama }} ({{ r.gedung }})</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Dosen Pengampu</label>
+                                <select v-model="addForm.dosen_id" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500">
+                                    <option :value="null">-- Pilih Dosen (Opsional) --</option>
+                                    <option v-for="d in availableDosens" :key="d.id" :value="d.id">{{ d.nama_gelar }}</option>
+                                </select>
+                            </div>
+                             <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Topik / Materi</label>
+                                <textarea v-model="addForm.materi" rows="2" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: Pengantar Algoritma"></textarea>
+                            </div>
+                        </div>
+                        <div class="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+                            <button @click="showAddModal = false" class="px-5 py-2.5 border rounded-xl font-semibold hover:bg-gray-100">Batal</button>
+                            <button @click="submitAdd" :disabled="addForm.processing" class="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold disabled:opacity-50 flex items-center gap-2">
+                                <PlusIcon class="w-5 h-5" />
+                                {{ addForm.processing ? 'Menyimpan...' : 'Simpan' }}
                             </button>
                         </div>
                     </div>

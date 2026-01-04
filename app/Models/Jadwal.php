@@ -24,9 +24,16 @@ class Jadwal extends Model
     ];
 
     // Relationships
+    // Note: Using 'kelasModel' because there's a 'kelas' column in this table
+    public function kelasModel(): BelongsTo
+    {
+        return $this->belongsTo(Kelas::class, 'kelas_id');
+    }
+
+    // Alias for backward compatibility
     public function kelas(): BelongsTo
     {
-        return $this->belongsTo(Kelas::class);
+        return $this->belongsTo(Kelas::class, 'kelas_id');
     }
 
     public function mataKuliah(): BelongsTo

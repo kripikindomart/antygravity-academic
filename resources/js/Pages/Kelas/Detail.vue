@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '../../Components/Layout/AppLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { 
     ArrowLeftIcon, BookOpenIcon, UsersIcon, Cog6ToothIcon, SparklesIcon,
     PlusIcon, TrashIcon, CheckIcon, AcademicCapIcon, PencilIcon,
@@ -21,15 +21,36 @@ const props = defineProps({
     allRuangans: Array,
     dosens: Array,
     filterData: Object,
+    trashedMks: Array,
 });
 
-// Tabs
-const activeTab = ref('overview');
+// Tabs with URL hash persistence
+const validTabs = ['overview', 'mk', 'mahasiswa', 'jadwal', 'trash'];
+const getTabFromHash = () => {
+    const hash = window.location.hash.replace('#', '');
+    return validTabs.includes(hash) ? hash : 'overview';
+};
+const activeTab = ref(getTabFromHash());
+
+// Update URL hash when tab changes
+watch(activeTab, (newTab) => {
+    window.history.replaceState(null, '', `#${newTab}`);
+});
+
+// Listen for hash changes (back/forward navigation)
+onMounted(() => {
+    window.addEventListener('hashchange', () => {
+        activeTab.value = getTabFromHash();
+    });
+});
+
 const tabs = [
-    { id: 'overview', name: 'Overview', icon: ChartBarIcon },
-    { id: 'mk', name: 'Mata Kuliah', icon: BookOpenIcon },
-    { id: 'mahasiswa', name: 'Mahasiswa', icon: UsersIcon },
-    { id: 'jadwal', name: 'Jadwal & Absensi', icon: CalendarIcon },
+    { id: 'overview', label: 'Overview', icon: ChartBarIcon },
+    { id: 'mk', label: 'Mata Kuliah', icon: BookOpenIcon },
+    { id: 'mahasiswa', label: 'Mahasiswa', icon: UsersIcon },
+    { id: 'jadwal', label: 'Jadwal & Absensi', icon: CalendarIcon },
+    { id: 'settings', label: 'Pengaturan', icon: Cog6ToothIcon },
+    { id: 'trash', label: 'Sampah', icon: TrashIcon },
 ];
 
 // Toast
@@ -279,6 +300,21 @@ const rowSettings = ref({
     tanggal_selesai: '', 
     dosen_id: '' 
 });
+const rowTimeError = ref('');
+
+watch(() => [rowSettings.value.jam_mulai, rowSettings.value.jam_selesai], ([start, end]) => {
+    if (start && end) {
+        const startInt = parseInt(start.replace(/[:]/g, ''));
+        const endInt = parseInt(end.replace(/[:]/g, ''));
+        if (startInt >= endInt) {
+            rowTimeError.value = 'Jam Mulai harus lebih kecil dari Jam Selesai';
+        } else {
+            rowTimeError.value = '';
+        }
+    } else {
+        rowTimeError.value = '';
+    }
+});
 
 // Time picker refs
 const jamMulaiRef = ref(null);
@@ -375,6 +411,10 @@ const toggleRowSettings = (km) => {
 
 const isSavingRow = ref(false);
 const saveRowSettings = async (kmId) => {
+    if (rowTimeError.value) {
+        showToast(rowTimeError.value, 'error');
+        return;
+    }
     isSavingRow.value = true;
     try {
         // Only send non-empty values
@@ -496,6 +536,16 @@ watch(selectAllAssigned, (val) => {
 // Bulk settings modal
 const showBulkSettingsModal = ref(false);
 const bulkSettingsType = ref(''); // 'hari', 'jam', 'tanggal', 'dosen', 'ruangan'
+const bulkRuanganSearch = ref('');
+const filteredBulkRuangans = computed(() => {
+    if (!bulkRuanganSearch.value) return props.allRuangans;
+    const q = bulkRuanganSearch.value.toLowerCase();
+    return props.allRuangans.filter(r => 
+        r.nama.toLowerCase().includes(q) || 
+        r.kode?.toLowerCase().includes(q)
+    );
+});
+
 const bulkSettingsData = ref({
     hari: '',
     jam_mulai: '',
@@ -504,11 +554,23 @@ const bulkSettingsData = ref({
     tanggal_selesai: '',
     dosen_id: '',
     ruangan_id: '',
+    ruangan_ids: [],
 });
 
 const openBulkSettings = (type) => {
     bulkSettingsType.value = type;
-    bulkSettingsData.value = { hari: '', jam_mulai: '08:00', jam_selesai: '10:00', tanggal_mulai: '', tanggal_selesai: '', dosen_id: '', ruangan_id: '' };
+    bulkRuanganSearch.value = ''; // Reset search
+    bulkSettingsData.value = { 
+        hari: '', 
+        jam_mulai: '08:00', 
+        jam_selesai: '10:00', 
+        tanggal_mulai: '', 
+        tanggal_selesai: '', 
+        dosen_id: '', 
+        ruangan_id: '',
+        ruangan_ids: [] 
+    };
+    bulkTimeError.value = '';
     showBulkSettingsModal.value = true;
     
     // Init flatpickr for jam type
@@ -547,6 +609,22 @@ const bulkJamMulaiRef = ref(null);
 const bulkJamSelesaiRef = ref(null);
 let fpBulkMulai = null;
 let fpBulkSelesai = null;
+const bulkTimeError = ref('');
+
+// Watch bulk time changes for validation
+watch(() => [bulkSettingsData.value.jam_mulai, bulkSettingsData.value.jam_selesai], ([start, end]) => {
+    if (start && end) {
+        const startInt = parseInt(start.replace(':', ''));
+        const endInt = parseInt(end.replace(':', ''));
+        if (startInt >= endInt) {
+            bulkTimeError.value = 'Jam Mulai harus lebih kecil dari Jam Selesai';
+        } else {
+            bulkTimeError.value = '';
+        }
+    } else {
+        bulkTimeError.value = '';
+    }
+});
 
 // Increment time for bulk settings modal
 const incrementBulkTime = (field, part, delta) => {
@@ -573,6 +651,13 @@ const closeBulkSettings = () => {
 const isSavingBulk = ref(false);
 const saveBulkSettings = async () => {
     if (selectedAssignedMks.value.length === 0) return;
+    
+    // Time Validation
+    if (bulkSettingsType.value === 'jam' && bulkTimeError.value) {
+        showToast(bulkTimeError.value, 'error');
+        return;
+    }
+
     isSavingBulk.value = true;
     
     try {
@@ -809,11 +894,35 @@ const ruanganCount = computed(() => {
 });
 
 const isGenerating = ref(false);
+const conflictReport = ref(null);
+
 const generateJadwal = async () => {
     isGenerating.value = true;
+    conflictReport.value = null;
     try {
         const response = await axios.post(route('kelas.generate-jadwal', props.kelas.id));
-        showToast(response.data.message || 'Jadwal berhasil digenerate');
+        const data = response.data;
+        
+        // Handle conflict report
+        if (data.has_conflicts && data.conflicts?.length > 0) {
+            conflictReport.value = data.conflicts;
+            const ruanganChanged = data.conflicts.filter(c => c.type === 'ruangan_changed').length;
+            const forcedOnline = data.conflicts.filter(c => c.type === 'forced_online').length;
+            const dosenConflict = data.conflicts.filter(c => c.type === 'dosen_conflict').length;
+            
+            let msg = `${data.generated} jadwal digenerate.`;
+            if (ruanganChanged > 0) msg += ` ${ruanganChanged} ruangan diganti.`;
+            if (forcedOnline > 0) msg += ` ${forcedOnline} dipindah online (ruangan penuh).`;
+            if (dosenConflict > 0) msg += ` ⚠️ ${dosenConflict} bentrok dosen!`;
+            
+            showToast(msg, dosenConflict > 0 ? 'warning' : 'success');
+        } else {
+            showToast(data.message || 'Jadwal berhasil digenerate');
+        }
+        
+        // Refresh jadwal list
+        await fetchJadwals();
+        
     } catch (e) {
         showToast(e.response?.data?.message || 'Gagal generate jadwal', 'error');
     } finally {
@@ -821,7 +930,49 @@ const generateJadwal = async () => {
     }
 };
 
-// Jadwal & Absensi Logic
+// ========== TAB: JADWAL (MANUAL ADD) ==========
+const showAddJadwalModal = ref(false);
+const isSavingJadwal = ref(false);
+const addJadwalForm = ref({
+    kelas_matakuliah_id: '',
+    tanggal: '',
+    jam_mulai: '',
+    jam_selesai: '',
+    ruangan_id: '',
+    dosen_id: '',
+    materi: '',
+});
+
+const openAddJadwalModal = () => {
+    addJadwalForm.value = {
+        kelas_matakuliah_id: '',
+        tanggal: new Date().toISOString().split('T')[0],
+        jam_mulai: '08:00',
+        jam_selesai: '10:00',
+        ruangan_id: '',
+        dosen_id: '',
+        materi: '',
+    };
+    showAddJadwalModal.value = true;
+};
+
+const saveManualJadwal = async () => {
+    if (!addJadwalForm.value.kelas_matakuliah_id || !addJadwalForm.value.tanggal) return;
+    
+    isSavingJadwal.value = true;
+    try {
+        await axios.post(route('kelas.store-manual-jadwal', props.kelas.id), addJadwalForm.value);
+        showToast('Jadwal berhasil ditambahkan');
+        showAddJadwalModal.value = false;
+        fetchJadwals(); // Reload list
+    } catch (e) {
+        showToast('Gagal menambahkan jadwal', 'error');
+    } finally {
+        isSavingJadwal.value = false;
+    }
+};
+
+// ========== TAB: JADWAL (LIST) ==========
 const jadwals = ref([]);
 const isFetchingJadwals = ref(false);
 const fetchJadwals = async () => {
@@ -902,7 +1053,7 @@ const viewSchedule = (km) => {
                                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-200' 
                                     : 'text-gray-600 hover:bg-gray-100']">
                             <component :is="tab.icon" class="w-5 h-5" />
-                            {{ tab.name }}
+                            {{ tab.label }}
                             <span v-if="tab.id === 'mk'" class="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-xs">{{ mkCount }}</span>
                         </button>
                     </div>
@@ -964,6 +1115,15 @@ const viewSchedule = (km) => {
                                     <div class="text-sm text-gray-500">Buat jadwal otomatis</div>
                                 </div>
                             </button>
+                            <Link :href="route('kelas.jadwal-matrix', kelas.id)" class="p-4 border border-gray-200 rounded-xl hover:border-emerald-300 hover:bg-emerald-50 transition flex items-center gap-3 text-left">
+                                <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                    <CalendarIcon class="w-5 h-5 text-emerald-600" />
+                                </div>
+                                <div>
+                                    <div class="font-semibold text-gray-900">Preview Jadwal</div>
+                                    <div class="text-sm text-gray-500">Lihat jadwal matrix</div>
+                                </div>
+                            </Link>
                         </div>
                     </div>
 
@@ -1158,6 +1318,9 @@ const viewSchedule = (km) => {
                                                                 :value="rowSettings.jam_selesai"
                                                                 placeholder="Pilih jam..."
                                                                 class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white cursor-pointer">
+                                                            <div v-if="rowTimeError" class="text-red-500 text-xs font-bold mt-1">
+                                                                {{ rowTimeError }}
+                                                            </div>
                                                         </div>
                                                         <div>
                                                             <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal Mulai</label>
@@ -1201,9 +1364,13 @@ const viewSchedule = (km) => {
                                                                 <span class="flex-1 font-semibold truncate">{{ dd.dosen?.nama }}</span>
                                                                 <div class="flex items-center gap-1 bg-white px-2 py-1 rounded border border-purple-100 shadow-sm">
                                                                     <span class="text-xs text-purple-600 font-medium">Sesi</span>
-                                                                    <input type="number" v-model="dd.sesi_mulai" @change="updateDosenSesi(km.id, dd.dosen_id, 'sesi_mulai', $event.target.value)" class="w-10 h-6 text-xs px-1 text-center border border-gray-200 rounded focus:ring-purple-500 focus:border-purple-500 p-0" placeholder="1">
+                                                                    <select v-model="dd.sesi_mulai" @change="updateDosenSesi(km.id, dd.dosen_id, 'sesi_mulai', $event.target.value)" class="w-12 h-6 text-xs px-1 text-center border border-gray-200 rounded focus:ring-purple-500 focus:border-purple-500 appearance-none bg-white cursor-pointer">
+                                                                        <option v-for="n in 16" :key="n" :value="n">{{ n }}</option>
+                                                                    </select>
                                                                     <span class="text-xs text-gray-400">-</span>
-                                                                    <input type="number" v-model="dd.sesi_selesai" @change="updateDosenSesi(km.id, dd.dosen_id, 'sesi_selesai', $event.target.value)" class="w-10 h-6 text-xs px-1 text-center border border-gray-200 rounded focus:ring-purple-500 focus:border-purple-500 p-0" placeholder="16">
+                                                                    <select v-model="dd.sesi_selesai" @change="updateDosenSesi(km.id, dd.dosen_id, 'sesi_selesai', $event.target.value)" class="w-12 h-6 text-xs px-1 text-center border border-gray-200 rounded focus:ring-purple-500 focus:border-purple-500 appearance-none bg-white cursor-pointer">
+                                                                        <option v-for="n in 16" :key="n" :value="n">{{ n }}</option>
+                                                                    </select>
                                                                 </div>
                                                                 <button @click="removeDosenFromMk(km.id, dd.dosen_id)" class="text-purple-400 hover:text-red-500 p-1 hover:bg-purple-100 rounded">
                                                                     <XMarkIcon class="w-4 h-4" />
@@ -1431,13 +1598,18 @@ const viewSchedule = (km) => {
                         
                         <div v-else class="space-y-4">
                             <!-- Header with Reset -->
-                            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                            <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                 <div class="flex items-center gap-2">
                                      <h3 class="font-bold text-gray-700">Total: {{ jadwals.length }} Pertemuan</h3>
                                 </div>
-                                <button @click="resetJadwal" class="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition shadow-sm flex items-center gap-2">
-                                    <TrashIcon class="w-4 h-4" /> Reset Semua Jadwal
-                                </button>
+                                <div class="flex gap-2">
+                                    <button @click="openAddJadwalModal" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-sm flex items-center gap-2">
+                                        <PlusIcon class="w-4 h-4" /> Tambah Jadwal
+                                    </button>
+                                    <button @click="resetJadwal" class="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition shadow-sm flex items-center gap-2">
+                                        <TrashIcon class="w-4 h-4" /> Reset Semua
+                                    </button>
+                                </div>
                             </div>
                              <!-- Loading State -->
                              <div v-if="isFetchingJadwals" class="text-center py-12">
@@ -1493,9 +1665,64 @@ const viewSchedule = (km) => {
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- =============== MODAL: ADD MK =============== -->
+            <!-- TAB: TRASH -->
+            <div v-show="activeTab === 'trash'" class="space-y-6 animate-fade-in relative">
+                <!-- Header -->
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white rounded-3xl shadow-sm border border-red-100">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">Sampah (Trash)</h2>
+                        <p class="text-sm text-gray-500">Item yang dihapus sementara. Bisa dipulihkan atau dihapus permanen.</p>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Mata Kuliah</th>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Dihapus Pada</th>
+                                <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <tr v-if="trashedMks.length === 0">
+                                <td colspan="3" class="px-6 py-12 text-center text-gray-400 italic">
+                                    <div class="flex flex-col items-center gap-2">
+                                        <TrashIcon class="w-8 h-8 opacity-50" />
+                                        <span>Tidak ada item di sampah</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-for="item in trashedMks" :key="item.id" class="hover:bg-red-50/30 transition-colors">
+                                <td class="px-6 py-4">
+                                    <div class="font-bold text-gray-800">{{ item.mata_kuliah?.nama || 'Unknown' }}</div>
+                                    <div class="text-xs text-gray-500 font-mono">{{ item.mata_kuliah?.kode }}</div>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-600">
+                                    {{ new Date(item.deleted_at).toLocaleString() }}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button @click="restoreMk(item.id)" :disabled="isRestoring === item.id"
+                                            class="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition disabled:opacity-50">
+                                            {{ isRestoring === item.id ? '...' : 'Pulihkan' }}
+                                        </button>
+                                        <button @click="forceDeleteMk(item.id)" :disabled="isForceDeleting === item.id"
+                                            class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition disabled:opacity-50">
+                                            {{ isForceDeleting === item.id ? '...' : 'Hapus Permanen' }}
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+            
+            <!-- =============== MODAL: ADD MK =============== -->
         <Teleport to="body">
             <Transition enter-active-class="ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100"
                 leave-active-class="ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">
@@ -1623,7 +1850,7 @@ const viewSchedule = (km) => {
             <Transition enter-active-class="ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100"
                 leave-active-class="ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">
                 <div v-if="showBulkSettingsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @click.self="closeBulkSettings">
-                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" @click.stop>
                         
                         <div class="bg-indigo-600 px-6 py-4 text-white">
                             <h2 class="text-lg font-bold">
@@ -1661,6 +1888,10 @@ const viewSchedule = (km) => {
                                         placeholder="Pilih jam..."
                                         class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-white cursor-pointer">
                                 </div>
+                                <div v-if="bulkTimeError" class="text-red-600 text-sm font-bold flex items-center gap-1">
+                                    <ExclamationTriangleIcon class="w-4 h-4" />
+                                    {{ bulkTimeError }}
+                                </div>
                             </div>
 
                             <!-- Tanggal -->
@@ -1688,11 +1919,22 @@ const viewSchedule = (km) => {
 
                             <!-- Ruangan -->
                             <div v-if="bulkSettingsType === 'ruangan'">
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Pilih Ruangan</label>
-                                <select v-model="bulkSettingsData.ruangan_id" class="w-full px-4 py-2.5 border border-gray-200 rounded-xl">
-                                    <option value="">Pilih Ruangan</option>
-                                    <option v-for="r in allRuangans" :key="r.id" :value="r.id">{{ r.nama }}</option>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Pilih Ruangan (Bisa lebih dari satu)</label>
+                                
+                                <!-- Search Input -->
+                                <div class="relative mb-2">
+                                    <MagnifyingGlassIcon class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input v-model="bulkRuanganSearch" type="text" placeholder="Cari ruangan..." 
+                                        class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+                                </div>
+
+                                <select v-model="bulkSettingsData.ruangan_ids" multiple class="w-full px-4 py-2.5 border border-gray-200 rounded-xl h-48 focus:ring-2 focus:ring-indigo-500">
+                                    <option v-for="r in filteredBulkRuangans" :key="r.id" :value="r.id">{{ r.nama }} ({{ r.kapasitas || '?' }})</option>
                                 </select>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    {{ filteredBulkRuangans.length }} ruangan ditemukan.
+                                    Tahan tombol Ctrl (Windows) atau Command (Mac) untuk memilih banyak.
+                                </p>
                             </div>
                         </div>
                         
@@ -1703,6 +1945,77 @@ const viewSchedule = (km) => {
                             <button @click="saveBulkSettings" :disabled="isSavingBulk"
                                 class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50">
                                 {{ isSavingBulk ? 'Menyimpan...' : 'Simpan' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- =============== MODAL: ADD MANUAL JADWAL =============== -->
+        <Teleport to="body">
+            <Transition enter-active-class="ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100"
+                leave-active-class="ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">
+                <div v-if="showAddJadwalModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @click.self="showAddJadwalModal = false">
+                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" @click.stop>
+                        <div class="bg-indigo-600 px-6 py-4 text-white flex justify-between items-center">
+                            <h2 class="text-lg font-bold">Tambah Jadwal Manual</h2>
+                            <button @click="showAddJadwalModal = false" class="hover:bg-white/20 p-1 rounded"><XMarkIcon class="w-5 h-5"/></button>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <!-- MK -->
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">Mata Kuliah</label>
+                                <select v-model="addJadwalForm.kelas_matakuliah_id" class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                                    <option value="">Pilih Mata Kuliah</option>
+                                    <option v-for="mk in props.kelas.kelas_matakuliahs" :key="mk.id" :value="mk.id">
+                                        {{ mk.mata_kuliah.nama }}
+                                    </option>
+                                </select>
+                            </div>
+                             <!-- Tanggal -->
+                             <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">Tanggal</label>
+                                <input type="date" v-model="addJadwalForm.tanggal" class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                            </div>
+                            <!-- Jam -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Jam Mulai</label>
+                                    <input type="time" v-model="addJadwalForm.jam_mulai" class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Jam Selesai</label>
+                                    <input type="time" v-model="addJadwalForm.jam_selesai" class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                                </div>
+                            </div>
+                            <!-- Ruangan & Dosen -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Ruangan</label>
+                                    <select v-model="addJadwalForm.ruangan_id" class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                                        <option value="">(Opsional) Default</option>
+                                        <option v-for="r in allRuangans" :key="r.id" :value="r.id">{{ r.nama }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">Dosen</label>
+                                    <select v-model="addJadwalForm.dosen_id" class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                                        <option value="">(Opsional) Default</option>
+                                        <option v-for="d in dosens" :key="d.id" :value="d.id">{{ d.nama }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                             <!-- Materi -->
+                             <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">Materi / Topik</label>
+                                <input type="text" v-model="addJadwalForm.materi" placeholder="Topik pertemuan..." class="w-full px-4 py-2 border border-gray-200 rounded-lg">
+                            </div>
+                        </div>
+                        <div class="px-6 py-4 bg-gray-50 flex justify-end gap-2 text-sm font-semibold">
+                            <button @click="showAddJadwalModal = false" class="px-4 py-2 border rounded-lg hover:bg-gray-100">Batal</button>
+                            <button @click="saveManualJadwal" :disabled="isSavingJadwal" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                                {{ isSavingJadwal ? 'Menyimpan...' : 'Simpan' }}
                             </button>
                         </div>
                     </div>

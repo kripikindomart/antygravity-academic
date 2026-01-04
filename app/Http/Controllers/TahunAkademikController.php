@@ -152,4 +152,23 @@ class TahunAkademikController extends Controller
 
         return back()->with('success', 'Semester aktif berhasil diubah.');
     }
+
+    /**
+     * Update semester dates (UTS/UAS etc).
+     */
+    public function updateSemester(Request $request, Semester $semester)
+    {
+        $validated = $request->validate([
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after:tanggal_mulai'],
+            'tanggal_uts' => ['nullable', 'date'],
+            'tanggal_uas' => ['nullable', 'date'],
+            'tanggal_input_nilai' => ['nullable', 'date'],
+            'tanggal_deadline_nilai' => ['nullable', 'date'],
+        ]);
+
+        $semester->update($validated);
+
+        return back()->with('success', 'Data Semester berhasil diperbarui.');
+    }
 }

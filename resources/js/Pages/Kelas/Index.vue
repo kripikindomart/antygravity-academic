@@ -74,6 +74,15 @@ const bulkDelete = async () => {
     }
 };
 
+// Update kelas status
+const updateKelasStatus = (kelas, newStatus) => {
+    router.put(route('kelas.update-status', kelas.id), {
+        status: newStatus,
+    }, {
+        preserveScroll: true,
+    });
+};
+
 // =============== CREATE MODAL ===============
 const showModal = ref(false);
 const form = useForm({
@@ -269,7 +278,15 @@ const persenOffline = computed(() => 100 - form.persen_online);
                                 class="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-semibold text-sm">
                                 <EyeIcon class="w-4 h-4" /> Detail
                             </Link>
-                            <div class="flex items-center gap-1">
+                            <div class="flex items-center gap-2">
+                                <!-- Status Dropdown -->
+                                <select :value="kelas.status" 
+                                    @change="updateKelasStatus(kelas, $event.target.value)"
+                                    :class="['text-xs font-bold py-1 px-2 rounded-lg border cursor-pointer', statusColor(kelas.status)]">
+                                    <option value="draft">DRAFT</option>
+                                    <option value="ready">READY</option>
+                                    <option value="generated">GENERATED</option>
+                                </select>
                                 <Link :href="route('kelas.edit', kelas.id)" 
                                     class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition">
                                     <PencilIcon class="w-4 h-4" />
