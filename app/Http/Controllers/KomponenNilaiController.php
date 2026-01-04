@@ -67,6 +67,7 @@ class KomponenNilaiController extends Controller
             'components' => 'present|array',
             'components.*.nama' => 'required|string',
             'components.*.bobot' => 'required|numeric|min:0|max:100',
+            'components.*.source_type' => 'nullable|string|in:manual,kehadiran',
         ]);
 
         $totalBobot = collect($request->components)->sum('bobot');
@@ -84,6 +85,7 @@ class KomponenNilaiController extends Controller
                     'prodi_id' => null, // Global
                     'nama' => $comp['nama'],
                     'bobot' => $comp['bobot'],
+                    'source_type' => $comp['source_type'] ?? 'manual',
                     'is_active' => true,
                 ]);
             }
@@ -110,6 +112,7 @@ class KomponenNilaiController extends Controller
             'components' => 'present|array',
             'components.*.nama' => 'required|string',
             'components.*.bobot' => 'required|numeric|min:0|max:100',
+            'components.*.source_type' => 'nullable|string|in:manual,kehadiran',
         ]);
 
         $totalBobot = collect($request->components)->sum('bobot');
@@ -127,6 +130,7 @@ class KomponenNilaiController extends Controller
                     'prodi_id' => $prodi->id,
                     'nama' => $comp['nama'],
                     'bobot' => $comp['bobot'],
+                    'source_type' => $comp['source_type'] ?? 'manual',
                     'is_active' => true,
                 ]);
             }

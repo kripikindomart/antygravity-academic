@@ -13,6 +13,7 @@ class KomponenNilai extends Model
         'nama',
         'bobot',
         'is_active',
+        'source_type', // manual, kehadiran
     ];
 
     protected $casts = [

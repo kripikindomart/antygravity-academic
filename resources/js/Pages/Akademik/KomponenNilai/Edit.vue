@@ -57,9 +57,16 @@
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Nama Komponen</label>
                                 <input v-model="comp.nama" type="text" required placeholder="Contoh: Tugas, Quiz, UTS, UAS" class="block w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500"/>
                             </div>
-                            <div class="w-32">
+                            <div class="w-28">
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Bobot (%)</label>
                                 <input v-model="comp.bobot" type="number" step="0.01" min="0" max="100" required placeholder="0" class="block w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500 text-center font-bold"/>
+                            </div>
+                            <div class="w-40">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Sumber Data</label>
+                                <select v-model="comp.source_type" class="block w-full px-3 py-3 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-0 focus:border-primary-500 text-sm">
+                                    <option value="manual">Manual</option>
+                                    <option value="kehadiran">Kehadiran</option>
+                                </select>
                             </div>
                             <div class="pt-8">
                                 <button type="button" @click="removeComponent(index)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Hapus">
@@ -131,19 +138,21 @@ onMounted(() => {
         form.components = props.komponens.map(c => ({
             nama: c.nama,
             bobot: parseFloat(c.bobot),
+            source_type: c.source_type || 'manual',
         }));
     } else {
         // Default template
         form.components = [
-            { nama: 'Tugas', bobot: 20 },
-            { nama: 'UTS', bobot: 30 },
-            { nama: 'UAS', bobot: 50 },
+            { nama: 'Kehadiran', bobot: 10, source_type: 'kehadiran' },
+            { nama: 'Tugas', bobot: 20, source_type: 'manual' },
+            { nama: 'UTS', bobot: 30, source_type: 'manual' },
+            { nama: 'UAS', bobot: 40, source_type: 'manual' },
         ];
     }
 });
 
 const addComponent = () => {
-    form.components.push({ nama: '', bobot: 0 });
+    form.components.push({ nama: '', bobot: 0, source_type: 'manual' });
 };
 
 const removeComponent = (index) => {

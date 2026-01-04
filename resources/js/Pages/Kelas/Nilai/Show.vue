@@ -162,7 +162,7 @@
                                     </td>
                                     
                                     <!-- Komponen inputs -->
-                                    <td v-for="comp in komponens" :key="comp.id" class="px-2 py-2" :class="inputMode === 'langsung' ? 'opacity-50' : ''">
+                                    <td v-for="comp in komponens" :key="comp.id" class="px-2 py-2" :class="[inputMode === 'langsung' ? 'opacity-50' : '', comp.source_type === 'kehadiran' ? 'bg-emerald-50/30' : '']">
                                         <input 
                                             v-if="grades[mhs.id]"
                                             v-model="grades[mhs.id][comp.id]" 
@@ -170,8 +170,9 @@
                                             min="0" 
                                             max="100" 
                                             step="0.01"
-                                            :disabled="inputMode === 'langsung'"
-                                            class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-primary-500 focus:ring-0 text-center font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                            :disabled="inputMode === 'langsung' || comp.source_type === 'kehadiran'"
+                                            :class="comp.source_type === 'kehadiran' ? 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'"
+                                            class="w-full px-3 py-2 border-2 rounded-lg focus:border-primary-500 focus:ring-0 text-center font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                                             placeholder="0"
                                         >
                                     </td>
@@ -324,23 +325,15 @@ onMounted(() => {
         grades.value[mhs.id] = {};
         let existingTotal = 0;
         
-        // Find kehadiran component (name contains 'hadir' or 'kehadiran')
-        const kehadiranComp = props.komponens.find(c => 
-            c.nama.toLowerCase().includes('hadir') || 
-            c.nama.toLowerCase().includes('kehadiran') ||
-            c.nama.toLowerCase().includes('presensi') ||
-            c.nama.toLowerCase().includes('absensi')
-        );
-        
         props.komponens.forEach(comp => {
             let val = 0;
             
-            // Check if this is kehadiran component - auto-fill from attendance
-            if (kehadiranComp && comp.id === kehadiranComp.id) {
+            // Check if this component is auto-filled from kehadiran data (based on source_type mapping)
+            if (comp.source_type === 'kehadiran') {
                 // Use attendance percentage as the grade value
                 val = props.attendanceSummary[mhs.id]?.percent || 0;
             } else if (props.scores[mhs.id]) {
-                // Use existing saved score
+                // Use existing saved score for manual components
                 const found = props.scores[mhs.id].find(s => s.komponen_nilai_id === comp.id);
                 if (found) val = found.nilai;
             }
