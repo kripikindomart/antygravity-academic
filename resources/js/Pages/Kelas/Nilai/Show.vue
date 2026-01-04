@@ -107,6 +107,9 @@
                         <table class="w-full">
                             <thead class="bg-gradient-to-r from-blue-600 to-cyan-500 sticky top-0 z-10">
                                 <tr>
+                                    <th class="px-4 py-4 text-center w-10">
+                                        <Checkbox v-model:checked="selectAll" />
+                                    </th>
                                     <th class="px-4 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider w-12">No</th>
                                     <th class="px-4 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider min-w-[200px]">Mahasiswa</th>
                                     <th class="px-4 py-4 text-center text-xs font-semibold text-white uppercase tracking-wider min-w-[80px] bg-emerald-600/50">
@@ -135,7 +138,13 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                                <tr v-for="(mhs, idx) in mahasiswas" :key="mhs.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                <tr v-for="(mhs, idx) in mahasiswas" :key="mhs.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" :class="{'bg-blue-50/30 dark:bg-blue-900/10': selectedStudents.has(mhs.id)}">
+                                    <td class="px-4 py-3 text-center">
+                                        <Checkbox 
+                                            :checked="selectedStudents.has(mhs.id)" 
+                                            @update:checked="toggleSelection(mhs.id)"
+                                        />
+                                    </td>
                                     <td class="px-4 py-3 text-center text-sm text-gray-500">{{ idx + 1 }}</td>
                                     <td class="px-4 py-3">
                                         <div class="flex items-center gap-3">
@@ -313,13 +322,13 @@
             <template #content>
                 <div class="space-y-4">
                     <p class="text-sm text-gray-500">
-                        Fitur ini akan mengisi nilai untuk <strong>SEMUA MAHASISWA</strong> berdasarkan komponen yang dipilih.
+                        Mengisi nilai untuk <strong class="text-indigo-600">{{ selectedStudents.size }} Mahasiswa Terpilih</strong>.
                         Nilai yang sudah ada akan ditimpa.
                     </p>
                     
                     <div>
                         <InputLabel value="Pilih Komponen" />
-                        <select v-model="bulkForm.component_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm">
+                        <select v-model="bulkForm.component_id" class="mt-1 block w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-primary-500 focus:ring-0 font-medium transition-colors text-gray-700 dark:text-gray-300">
                             <option value="all">-- Semua Komponen (Manual) --</option>
                             <template v-for="comp in komponens" :key="comp.id">
                                 <option v-if="comp.source_type !== 'kehadiran'" :value="comp.id">
@@ -334,12 +343,12 @@
                     
                     <div>
                         <InputLabel value="Nilai (0-100)" />
-                        <TextInput 
+                        <input 
                             v-model="bulkForm.value" 
                             type="number" 
                             min="0" 
                             max="100" 
-                            class="mt-1 block w-full" 
+                            class="mt-1 block w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-primary-500 focus:ring-0 font-medium transition-colors text-gray-700 dark:text-gray-300"
                             placeholder="Contoh: 85"
                             @keyup.enter="applyBulkInput"
                         />
@@ -367,6 +376,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import Checkbox from '@/Components/Checkbox.vue';
 
 const props = defineProps({
     kelasMatakuliah: Object,
@@ -392,8 +402,29 @@ const bulkForm = ref({
     component_id: 'all',
     value: ''
 });
+const selectedStudents = ref(new Set());
+
+const selectAll = computed({
+    get: () => props.mahasiswas.length > 0 && selectedStudents.value.size === props.mahasiswas.length,
+    set: (val) => {
+        selectedStudents.value = new Set(val ? props.mahasiswas.map(m => m.id) : []);
+    },
+});
+
+const toggleSelection = (id) => {
+    if (selectedStudents.value.has(id)) {
+        selectedStudents.value.delete(id);
+    } else {
+        selectedStudents.value.add(id);
+    }
+};
 
 const openBulkModal = () => {
+    if (selectedStudents.value.size === 0) {
+        alert('Pilih minimal satu mahasiswa!');
+        return;
+    }
+
     // Default to first manual component if available
     const firstManual = props.komponens.find(c => c.source_type !== 'kehadiran');
     bulkForm.value.component_id = firstManual ? firstManual.id : 'all';
@@ -412,8 +443,10 @@ const applyBulkInput = () => {
         return;
     }
     
-    // Apply logic
+    // Apply logic to SELECTED students only
     props.mahasiswas.forEach(mhs => {
+        if (!selectedStudents.value.has(mhs.id)) return;
+
         if (!grades.value[mhs.id]) grades.value[mhs.id] = {};
         
         if (bulkForm.value.component_id === 'all') {
@@ -441,6 +474,9 @@ const applyBulkInput = () => {
 };
 
 onMounted(() => {
+    // Select all by default as requested
+    selectedStudents.value = new Set(props.mahasiswas.map(m => m.id));
+
     props.mahasiswas.forEach(mhs => {
         grades.value[mhs.id] = {};
         let existingTotal = 0;
