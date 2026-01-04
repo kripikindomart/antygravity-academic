@@ -270,4 +270,166 @@ class NilaiController extends Controller
 
         return redirect()->back()->with('success', 'Nilai berhasil disimpan' . ($action === 'submit' ? ' dan disubmit.' : '.'));
     }
+    public function downloadTemplate(KelasMatakuliah $kelasMatakuliah)
+    {
+        $prodiId = $kelasMatakuliah->kelas->prodi_id;
+        $komponens = \App\Models\KomponenNilai::where('prodi_id', $prodiId)->where('is_active', true)->get();
+        if ($komponens->isEmpty()) {
+            $komponens = \App\Models\KomponenNilai::whereNull('prodi_id')->where('is_active', true)->get();
+        }
+
+        $filename = 'Template_Nilai_' . $kelasMatakuliah->kelas->nama . '_' . ($kelasMatakuliah->mataKuliah->kode ?? 'MK') . '.xlsx';
+        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\NilaiTemplateExport($kelasMatakuliah, $komponens), $filename);
+    }
+
+    public function importPreview(Request $request, KelasMatakuliah $kelasMatakuliah)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv',
+        ]);
+
+        $data = \Maatwebsite\Excel\Facades\Excel::toArray([], $request->file('file'));
+        if (empty($data))
+            return response()->json(['error' => 'File kosong'], 400);
+
+        $rows = $data[0]; // Sheet 1
+        $header = array_shift($rows); // Row 1
+
+        // Parse Header to find Component IDs
+        $componentMap = []; // index => components_id
+        foreach ($header as $index => $colName) {
+            // Check for ID in format "Name (ID:123)"
+            if (preg_match('/\(ID:(\d+)\)/', $colName, $matches)) {
+                $componentMap[$index] = $matches[1];
+            }
+        }
+
+        if (empty($componentMap)) {
+            return response()->json(['error' => 'Format header tidak valid. Pastikan menggunakan template yang disediakan.'], 400);
+        }
+
+        $previewData = [];
+        $mahasiswas = $kelasMatakuliah->kelas->mahasiswas->keyBy('nim');
+
+        foreach ($rows as $row) {
+            $nim = isset($row[1]) ? trim($row[1]) : null; // Column B (Index 1) based on template: No, NIM, Nama
+            if (!$nim)
+                continue;
+
+            $mhs = $mahasiswas[$nim] ?? null;
+            if (!$mhs)
+                continue;
+
+            $grades = [];
+            foreach ($componentMap as $index => $compId) {
+                // Determine grade value
+                $val = isset($row[$index]) ? $row[$index] : 0;
+                // If cell is empty, default to 0
+                if ($val === null || $val === '')
+                    $val = 0;
+
+                $val = is_numeric($val) ? floatval($val) : 0;
+
+                if ($val < 0)
+                    $val = 0;
+                if ($val > 100)
+                    $val = 100;
+
+                $grades[$compId] = $val;
+            }
+
+            $previewData[] = [
+                'mahasiswa_id' => $mhs->id,
+                'nim' => $mhs->nim,
+                'nama' => $mhs->nama,
+                'grades' => $grades,
+            ];
+        }
+
+        return response()->json([
+            'preview' => $previewData,
+            'component_ids' => array_values($componentMap)
+        ]);
+    }
+
+    public function importStore(Request $request, KelasMatakuliah $kelasMatakuliah)
+    {
+        $validated = $request->validate([
+            'data' => 'required|array',
+            'data.*.mahasiswa_id' => 'required|exists:mahasiswas,id',
+            'data.*.grades' => 'required|array',
+        ]);
+
+        $graderId = Auth::id();
+        $prodiId = $kelasMatakuliah->kelas->prodi_id;
+        $skalaNilais = SkalaNilai::forProdi($prodiId)->get();
+
+        $components = \App\Models\KomponenNilai::where('prodi_id', $prodiId)->where('is_active', true)->get();
+        if ($components->isEmpty()) {
+            $components = \App\Models\KomponenNilai::whereNull('prodi_id')->where('is_active', true)->get();
+        }
+
+        DB::beginTransaction();
+        try {
+            // 1. Save Grades
+            foreach ($validated['data'] as $item) {
+                foreach ($item['grades'] as $compId => $val) {
+                    NilaiMahasiswa::updateOrCreate(
+                        [
+                            'mahasiswa_id' => $item['mahasiswa_id'],
+                            'kelas_mata_kuliah_id' => $kelasMatakuliah->id,
+                            'komponen_nilai_id' => $compId,
+                        ],
+                        [
+                            'nilai' => $val,
+                            'grader_id' => $graderId,
+                        ]
+                    );
+                }
+            }
+
+            // 2. Recalculate Final Grades for affected students
+            foreach ($validated['data'] as $item) {
+                $mhsId = $item['mahasiswa_id'];
+
+                $totalScore = 0;
+                // Fetch updated scores
+                $studentScores = NilaiMahasiswa::where('mahasiswa_id', $mhsId)
+                    ->whereIn('komponen_nilai_id', $components->pluck('id'))
+                    ->get()
+                    ->keyBy('komponen_nilai_id');
+
+                foreach ($components as $comp) {
+                    $score = isset($studentScores[$comp->id]) ? $studentScores[$comp->id]->nilai : 0;
+                    $totalScore += ($score * $comp->bobot / 100);
+                }
+
+                $gradeLetter = 'E';
+                foreach ($skalaNilais as $skala) {
+                    if ($totalScore >= $skala->min_nilai && $totalScore <= $skala->max_nilai) {
+                        $gradeLetter = $skala->huruf;
+                        break;
+                    }
+                }
+
+                RekapNilai::updateOrCreate(
+                    [
+                        'kelas_matakuliah_id' => $kelasMatakuliah->id,
+                        'mahasiswa_id' => $mhsId,
+                    ],
+                    [
+                        'nilai_angka' => $totalScore,
+                        'nilai_huruf' => $gradeLetter,
+                        // 'nilai_indeks' => ... (omitted for brevity, can happen later)
+                    ]
+                );
+            }
+
+            DB::commit();
+            return back()->with('success', 'Nilai berhasil diimport!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withErrors(['message' => 'Gagal import: ' . $e->getMessage()]);
+        }
+    }
 }

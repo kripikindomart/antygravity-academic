@@ -351,4 +351,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/import', [\App\Http\Controllers\MahasiswaController::class, 'import'])->name('import');
         Route::get('/download-template', [\App\Http\Controllers\MahasiswaController::class, 'downloadTemplate'])->name('download-template');
     });
+    // Nilai Excel Import/Export
+    Route::prefix('kelas-mk/{kelasMatakuliah}/nilai')->name('kelas.nilai.')->group(function () {
+        Route::get('/template', [\App\Http\Controllers\NilaiController::class, 'downloadTemplate'])->name('template');
+        Route::post('/import-preview', [\App\Http\Controllers\NilaiController::class, 'importPreview'])->name('import-preview');
+        Route::post('/import', [\App\Http\Controllers\NilaiController::class, 'importStore'])->name('import-store');
+    });
+
 });
