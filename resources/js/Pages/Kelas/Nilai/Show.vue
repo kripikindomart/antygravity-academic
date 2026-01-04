@@ -330,6 +330,7 @@
                         <InputLabel value="Pilih Komponen" />
                         <select v-model="bulkForm.component_id" class="mt-1 block w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-primary-500 focus:ring-0 font-medium transition-colors text-gray-700 dark:text-gray-300">
                             <option value="all">-- Semua Komponen (Manual) --</option>
+                            <option value="final">-- Nilai Akhir Langsung --</option>
                             <template v-for="comp in komponens" :key="comp.id">
                                 <option v-if="comp.source_type !== 'kehadiran'" :value="comp.id">
                                     {{ comp.nama }} (Bobot: {{ comp.bobot }}%)
@@ -456,6 +457,15 @@ const applyBulkInput = () => {
                     grades.value[mhs.id][comp.id] = val;
                 }
             });
+        } else if (bulkForm.value.component_id === 'final') {
+             // Set direct final grade and distribute
+            directFinalGrades.value[mhs.id] = val;
+            distributeGrade(mhs.id);
+            // distributeGrade updates grades.value, so no need to manual set here
+            // But we must ensure specific logic:
+            // distributeGrade takes directFinalGrades[mhs.id] and puts it into manual components.
+            // So we are done for this student.
+            return; 
         } else {
             // Apply to specific component
             grades.value[mhs.id][bulkForm.value.component_id] = val;
