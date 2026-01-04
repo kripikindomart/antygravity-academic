@@ -24,10 +24,19 @@
                             Per Komponen
                         </button>
                         <button @click="inputMode = 'langsung'" :class="['px-3 py-1.5 rounded-lg text-xs font-bold transition', inputMode === 'langsung' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-200']">
-                            Nilai Akhir Langsung
+                            Nilai Akhir
                         </button>
                     </div>
-                    <button @click="submitForm('save')" :disabled="isSubmitting" class="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-all">
+                    
+                    <!-- Bulk Action Button -->
+                    <button @click="openBulkModal" class="flex items-center gap-2 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl transition-colors text-xs font-bold">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                        Bulk Input
+                    </button>
+                    
+                    <button @click="submitForm('draft')" :disabled="isSubmitting" class="hidden sm:inline-flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-all">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
                         </svg>
@@ -295,6 +304,57 @@
                 </div>
             </div>
         </div>
+    <!-- Removed closing AppLayout here to include Modal inside -->
+        <!-- Bulk Action Modal -->
+        <DialogModal :show="showBulkModal" @close="closeBulkModal">
+            <template #title>
+                Bulk Input Nilai
+            </template>
+            <template #content>
+                <div class="space-y-4">
+                    <p class="text-sm text-gray-500">
+                        Fitur ini akan mengisi nilai untuk <strong>SEMUA MAHASISWA</strong> berdasarkan komponen yang dipilih.
+                        Nilai yang sudah ada akan ditimpa.
+                    </p>
+                    
+                    <div>
+                        <InputLabel value="Pilih Komponen" />
+                        <select v-model="bulkForm.component_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm">
+                            <option value="all">-- Semua Komponen (Manual) --</option>
+                            <template v-for="comp in komponens" :key="comp.id">
+                                <option v-if="comp.source_type !== 'kehadiran'" :value="comp.id">
+                                    {{ comp.nama }} (Bobot: {{ comp.bobot }}%)
+                                </option>
+                            </template>
+                        </select>
+                        <p v-if="bulkForm.component_id === 'all'" class="text-xs text-orange-600 mt-1">
+                            *Hanya komponen manual yang akan diisi. Komponen kehadiran tidak akan berubah.
+                        </p>
+                    </div>
+                    
+                    <div>
+                        <InputLabel value="Nilai (0-100)" />
+                        <TextInput 
+                            v-model="bulkForm.value" 
+                            type="number" 
+                            min="0" 
+                            max="100" 
+                            class="mt-1 block w-full" 
+                            placeholder="Contoh: 85"
+                            @keyup.enter="applyBulkInput"
+                        />
+                    </div>
+                </div>
+            </template>
+            <template #footer>
+                <SecondaryButton @click="closeBulkModal" class="mr-3">
+                    Batal
+                </SecondaryButton>
+                <PrimaryButton @click="applyBulkInput" :disabled="!bulkForm.value">
+                    Terapkan Nilai
+                </PrimaryButton>
+            </template>
+        </DialogModal>
     </AppLayout>
 </template>
 
@@ -302,6 +362,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/Layout/AppLayout.vue';
+import DialogModal from '@/Components/DialogModal.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import TextInput from '@/Components/TextInput.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
 
 const props = defineProps({
     kelasMatakuliah: Object,
@@ -320,6 +385,60 @@ const inputMode = ref('komponen'); // 'komponen' or 'langsung'
 const grades = ref({});
 const directFinalGrades = ref({});
 const isSubmitting = ref(false);
+
+// Bulk Action State
+const showBulkModal = ref(false);
+const bulkForm = ref({
+    component_id: 'all',
+    value: ''
+});
+
+const openBulkModal = () => {
+    // Default to first manual component if available
+    const firstManual = props.komponens.find(c => c.source_type !== 'kehadiran');
+    bulkForm.value.component_id = firstManual ? firstManual.id : 'all';
+    bulkForm.value.value = '';
+    showBulkModal.value = true;
+};
+
+const closeBulkModal = () => {
+    showBulkModal.value = false;
+};
+
+const applyBulkInput = () => {
+    const val = parseFloat(bulkForm.value.value);
+    if (isNaN(val) || val < 0 || val > 100) {
+        alert('Masukkan nilai valid (0-100)');
+        return;
+    }
+    
+    // Apply logic
+    props.mahasiswas.forEach(mhs => {
+        if (!grades.value[mhs.id]) grades.value[mhs.id] = {};
+        
+        if (bulkForm.value.component_id === 'all') {
+            // Apply to all manual components
+            props.komponens.forEach(comp => {
+                if (comp.source_type !== 'kehadiran') {
+                    grades.value[mhs.id][comp.id] = val;
+                }
+            });
+        } else {
+            // Apply to specific component
+            grades.value[mhs.id][bulkForm.value.component_id] = val;
+        }
+        
+        // Recalculate totals for direct grade view if needed
+        let total = 0;
+        props.komponens.forEach(comp => {
+            const v = parseFloat(grades.value[mhs.id][comp.id]) || 0;
+            total += (v * parseFloat(comp.bobot) / 100);
+        });
+        directFinalGrades.value[mhs.id] = total.toFixed(2);
+    });
+    
+    closeBulkModal();
+};
 
 onMounted(() => {
     props.mahasiswas.forEach(mhs => {
@@ -372,12 +491,12 @@ const distributeGrade = (mhsId) => {
     if (finalVal < 0) finalVal = 0;
     if (finalVal > 100) finalVal = 100;
     
-    // Each component gets the same value (finalVal) because:
-    // Final = sum(komponen[i] * bobot[i] / 100)
-    // If all komponen[i] = X, then Final = X * sum(bobot[i]) / 100 = X * 100/100 = X
-    // So to get final = F, each komponen should be F
+    // ONLY distribute to MANUAL components.
+    // Kehadiran component (source_type === 'kehadiran') must stay as is (from attendance data).
     props.komponens.forEach(comp => {
-        grades.value[mhsId][comp.id] = finalVal;
+        if (comp.source_type !== 'kehadiran') {
+            grades.value[mhsId][comp.id] = finalVal;
+        }
     });
 };
 
