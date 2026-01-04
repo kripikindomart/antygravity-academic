@@ -329,13 +329,22 @@
                     <div>
                         <InputLabel value="Pilih Komponen" />
                         <select v-model="bulkForm.component_id" class="mt-1 block w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-primary-500 focus:ring-0 font-medium transition-colors text-gray-700 dark:text-gray-300">
-                            <option value="all">-- Semua Komponen (Manual) --</option>
-                            <option value="final">-- Nilai Akhir Langsung --</option>
-                            <template v-for="comp in komponens" :key="comp.id">
-                                <option v-if="comp.source_type !== 'kehadiran'" :value="comp.id">
-                                    {{ comp.nama }} (Bobot: {{ comp.bobot }}%)
-                                </option>
+                            
+                            <!-- Options for Mode Komponen -->
+                            <template v-if="inputMode === 'komponen'">
+                                <option value="all">-- Semua Komponen (Manual) --</option>
+                                <template v-for="comp in komponens" :key="comp.id">
+                                    <option v-if="comp.source_type !== 'kehadiran'" :value="comp.id">
+                                        {{ comp.nama }} (Bobot: {{ comp.bobot }}%)
+                                    </option>
+                                </template>
                             </template>
+                            
+                            <!-- Options for Mode Langsung -->
+                            <template v-else>
+                                <option value="final">-- Nilai Akhir Langsung --</option>
+                            </template>
+
                         </select>
                         <p v-if="bulkForm.component_id === 'all'" class="text-xs text-orange-600 mt-1">
                             *Hanya komponen manual yang akan diisi. Komponen kehadiran tidak akan berubah.
@@ -426,9 +435,14 @@ const openBulkModal = () => {
         return;
     }
 
-    // Default to first manual component if available
-    const firstManual = props.komponens.find(c => c.source_type !== 'kehadiran');
-    bulkForm.value.component_id = firstManual ? firstManual.id : 'all';
+    if (inputMode.value === 'langsung') {
+        bulkForm.value.component_id = 'final';
+    } else {
+        // Default to first manual component if available
+        const firstManual = props.komponens.find(c => c.source_type !== 'kehadiran');
+        bulkForm.value.component_id = firstManual ? firstManual.id : 'all';
+    }
+    
     bulkForm.value.value = '';
     showBulkModal.value = true;
 };
