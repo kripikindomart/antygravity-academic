@@ -151,7 +151,7 @@
                                     <td v-if="inputMode === 'langsung'" class="px-2 py-2 bg-purple-50/50">
                                         <input 
                                             v-model="directFinalGrades[mhs.id]" 
-                                            @input="distributeGrade(mhs.id)"
+                                            @input="clampDirectGrade(mhs.id)"
                                             type="number" 
                                             min="0" 
                                             max="100" 
@@ -166,6 +166,7 @@
                                         <input 
                                             v-if="grades[mhs.id]"
                                             v-model="grades[mhs.id][comp.id]" 
+                                            @input="clampGrade(mhs.id, comp.id)"
                                             type="number" 
                                             min="0" 
                                             max="100" 
@@ -347,9 +348,29 @@ onMounted(() => {
     });
 });
 
+// Clamp grade value between 0 and 100
+const clampGrade = (mhsId, compId) => {
+    let val = parseFloat(grades.value[mhsId][compId]) || 0;
+    if (val < 0) val = 0;
+    if (val > 100) val = 100;
+    grades.value[mhsId][compId] = val;
+};
+
+// Clamp direct final grade between 0 and 100
+const clampDirectGrade = (mhsId) => {
+    let val = parseFloat(directFinalGrades.value[mhsId]) || 0;
+    if (val < 0) val = 0;
+    if (val > 100) val = 100;
+    directFinalGrades.value[mhsId] = val;
+    distributeGrade(mhsId);
+};
+
 // Distribute final grade to components proportionally
 const distributeGrade = (mhsId) => {
-    const finalVal = parseFloat(directFinalGrades.value[mhsId]) || 0;
+    let finalVal = parseFloat(directFinalGrades.value[mhsId]) || 0;
+    // Clamp the value
+    if (finalVal < 0) finalVal = 0;
+    if (finalVal > 100) finalVal = 100;
     
     // Each component gets the same value (finalVal) because:
     // Final = sum(komponen[i] * bobot[i] / 100)
