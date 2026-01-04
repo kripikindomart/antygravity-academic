@@ -324,12 +324,27 @@ onMounted(() => {
         grades.value[mhs.id] = {};
         let existingTotal = 0;
         
+        // Find kehadiran component (name contains 'hadir' or 'kehadiran')
+        const kehadiranComp = props.komponens.find(c => 
+            c.nama.toLowerCase().includes('hadir') || 
+            c.nama.toLowerCase().includes('kehadiran') ||
+            c.nama.toLowerCase().includes('presensi') ||
+            c.nama.toLowerCase().includes('absensi')
+        );
+        
         props.komponens.forEach(comp => {
             let val = 0;
-            if (props.scores[mhs.id]) {
+            
+            // Check if this is kehadiran component - auto-fill from attendance
+            if (kehadiranComp && comp.id === kehadiranComp.id) {
+                // Use attendance percentage as the grade value
+                val = props.attendanceSummary[mhs.id]?.percent || 0;
+            } else if (props.scores[mhs.id]) {
+                // Use existing saved score
                 const found = props.scores[mhs.id].find(s => s.komponen_nilai_id === comp.id);
                 if (found) val = found.nilai;
             }
+            
             grades.value[mhs.id][comp.id] = val;
             existingTotal += (val * parseFloat(comp.bobot) / 100);
         });
