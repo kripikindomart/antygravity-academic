@@ -78,7 +78,7 @@ class NilaiController extends Controller
         // Load data needed for grading interface
         $kelasMatakuliah->load([
             'kelas.mahasiswas' => function ($q) {
-                $q->wherePivot('status', 'active')->orderBy('nama');
+                $q->orderBy('nama'); // Removed wherePivot filter - status might be null or different
             },
             'mataKuliah',
             'kelas.prodi', // Load prodi through kelas
@@ -111,6 +111,60 @@ class NilaiController extends Controller
         // Get Skala Nilai (Prodi or Global)
         $skalaNilais = SkalaNilai::forProdi($prodiId)->get();
 
+        // === ATTENDANCE DATA ===
+        // Get all JadwalPertemuan for this KelasMatakuliah's MK + Kelas combo
+        $jadwalPertemuans = \App\Models\JadwalPertemuan::whereHas('jadwal', function ($q) use ($kelasMatakuliah) {
+            $q->where('mata_kuliah_id', $kelasMatakuliah->mata_kuliah_id)
+                ->where('kelas_id', $kelasMatakuliah->kelas_id);
+        })
+            ->with('absensis')
+            ->orderBy('tanggal')
+            ->orderBy('pertemuan_ke')
+            ->get();
+
+        // Calculate attendance summary per mahasiswa
+        $attendanceSummary = [];
+        $mahasiswaIds = $kelasMatakuliah->kelas->mahasiswas->pluck('id');
+        $totalMeetings = $jadwalPertemuans->count();
+
+        foreach ($mahasiswaIds as $mhsId) {
+            $hadirCount = 0;
+            $izinCount = 0;
+            $sakitCount = 0;
+            $alphaCount = 0;
+
+            foreach ($jadwalPertemuans as $jp) {
+                $absensi = $jp->absensis->firstWhere('mahasiswa_id', $mhsId);
+                if ($absensi) {
+                    match ($absensi->status) {
+                        'hadir' => $hadirCount++,
+                        'izin' => $izinCount++,
+                        'sakit' => $sakitCount++,
+                        'alpha' => $alphaCount++,
+                        default => null,
+                    };
+                }
+            }
+
+            $attendanceSummary[$mhsId] = [
+                'hadir' => $hadirCount,
+                'izin' => $izinCount,
+                'sakit' => $sakitCount,
+                'alpha' => $alphaCount,
+                'percent' => $totalMeetings > 0 ? round(($hadirCount / $totalMeetings) * 100, 1) : 0,
+            ];
+        }
+
+        // Build attendance detail per pertemuan
+        $attendanceDetail = $jadwalPertemuans->map(function ($jp) {
+            return [
+                'id' => $jp->id,
+                'pertemuan_ke' => $jp->pertemuan_ke,
+                'tanggal' => $jp->tanggal?->format('Y-m-d'),
+                'absensis' => $jp->absensis->keyBy('mahasiswa_id')->map(fn($a) => $a->status),
+            ];
+        });
+
         return Inertia::render('Kelas/Nilai/Show', [
             'kelasMatakuliah' => $kelasMatakuliah,
             'mahasiswas' => $kelasMatakuliah->kelas->mahasiswas,
@@ -118,6 +172,9 @@ class NilaiController extends Controller
             'scores' => $scores,
             'rekaps' => $rekaps,
             'skalaNilais' => $skalaNilais,
+            'attendanceSummary' => $attendanceSummary,
+            'attendanceDetail' => $attendanceDetail,
+            'totalMeetings' => $totalMeetings,
         ]);
     }
 
