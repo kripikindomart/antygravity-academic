@@ -88,13 +88,22 @@ const submitAttendance = () => {
         attendances: attendances.value.map(a => ({
             mahasiswa_id: a.mahasiswa_id,
             status: a.status,
-            keterangan: a.keterangan,
-            jam_masuk: a.jam_masuk,
-            jam_keluar: a.jam_keluar,
+            keterangan: a.keterangan || null,
+            jam_masuk: a.jam_masuk || null,
+            jam_keluar: a.jam_keluar || null,
         }))
     }, {
         preserveState: true,
         preserveScroll: true,
+        onSuccess: () => {
+            toastMessage.value = 'Absensi berhasil disimpan!';
+            showToast.value = true;
+            setTimeout(() => showToast.value = false, 3000);
+        },
+        onError: (errors) => {
+            console.error('Error saving absensi:', errors);
+            alert('Gagal menyimpan absensi: ' + (errors.message || Object.values(errors).join(', ')));
+        },
         onFinish: () => {
             isSavingAbsensi.value = false;
         }

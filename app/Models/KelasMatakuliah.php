@@ -58,6 +58,16 @@ class KelasMatakuliah extends Model
         return $this->hasMany(KelasMkDosen::class, 'kelas_matakuliah_id');
     }
 
+    public function komponenNilais(): HasMany
+    {
+        return $this->hasMany(KomponenNilai::class, 'kelas_matakuliah_id');
+    }
+
+    public function rekapNilais(): HasMany
+    {
+        return $this->hasMany(RekapNilai::class, 'kelas_matakuliah_id');
+    }
+
     // Accessors
     public function getJadwalDisplayAttribute(): string
     {

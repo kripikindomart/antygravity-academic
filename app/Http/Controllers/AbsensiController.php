@@ -171,8 +171,8 @@ class AbsensiController extends Controller
             'attendances.*.mahasiswa_id' => 'required|exists:mahasiswas,id',
             'attendances.*.status' => 'required|in:hadir,izin,sakit,alpha',
             'attendances.*.keterangan' => 'nullable|string|max:500',
-            'attendances.*.jam_masuk' => 'nullable|date_format:H:i',
-            'attendances.*.jam_keluar' => 'nullable|date_format:H:i',
+            'attendances.*.jam_masuk' => 'nullable|string', // Accept any time string
+            'attendances.*.jam_keluar' => 'nullable|string', // Accept any time string
         ]);
 
         foreach ($validated['attendances'] as $attendance) {

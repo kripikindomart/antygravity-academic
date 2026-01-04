@@ -91,6 +91,30 @@ Route::middleware('auth')->group(function () {
         Route::put('/semester/{semester}', [TahunAkademikController::class, 'updateSemester'])->name('update-semester');
     });
 
+    // Master Data - Skala Nilai
+    Route::prefix('master/skala-nilai')->name('skala-nilai.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\SkalaNilaiController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\SkalaNilaiController::class, 'store'])->name('store');
+        Route::put('/{skalaNilai}', [\App\Http\Controllers\SkalaNilaiController::class, 'update'])->name('update');
+        Route::delete('/{skalaNilai}', [\App\Http\Controllers\SkalaNilaiController::class, 'destroy'])->name('destroy');
+    });
+
+    // Akademik - Setting Komponen Nilai (Per Prodi + Global)
+    Route::prefix('akademik/komponen-nilai')->name('komponen-nilai.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\KomponenNilaiController::class, 'index'])->name('index');
+        Route::get('/global/edit', [\App\Http\Controllers\KomponenNilaiController::class, 'editGlobal'])->name('editGlobal');
+        Route::put('/global', [\App\Http\Controllers\KomponenNilaiController::class, 'updateGlobal'])->name('updateGlobal');
+        Route::get('/{prodi}/edit', [\App\Http\Controllers\KomponenNilaiController::class, 'edit'])->name('edit');
+        Route::put('/{prodi}', [\App\Http\Controllers\KomponenNilaiController::class, 'update'])->name('update');
+    });
+
+    // Dosen - Penilaian
+    Route::prefix('dosen/nilai')->name('dosen.nilai.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\NilaiController::class, 'index'])->name('index');
+        Route::get('/{kelasMatakuliah}', [\App\Http\Controllers\NilaiController::class, 'show'])->name('show');
+        Route::post('/{kelasMatakuliah}', [\App\Http\Controllers\NilaiController::class, 'store'])->name('store');
+    });
+
     // Master Data - Program Studi
     Route::prefix('prodi')->name('prodi.')->middleware('permission:prodi.view')->group(function () {
         Route::get('/', [ProgramStudiController::class, 'index'])->name('index');

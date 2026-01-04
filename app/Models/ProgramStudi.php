@@ -69,6 +69,14 @@ class ProgramStudi extends Model
     }
 
     /**
+     * Get komponen nilais for this program studi.
+     */
+    public function komponenNilais()
+    {
+        return $this->hasMany(KomponenNilai::class, 'prodi_id');
+    }
+
+    /**
      * Get jabatan struktural for this program studi.
      */
     public function jabatanStruktural()
