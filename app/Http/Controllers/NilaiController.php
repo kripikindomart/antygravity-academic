@@ -119,16 +119,45 @@ class NilaiController extends Controller
             $canViewOthersGrades = $settings?->allow_view_others ?? false;
         }
 
-        // Build scores query
+        // Build scores query - include dosen info for grouping
         $scoresQuery = NilaiMahasiswa::where('kelas_matakuliah_id', $kelasMatakuliah->id)
-            ->whereIn('komponen_nilai_id', $komponens->pluck('id'));
+            ->whereIn('komponen_nilai_id', $komponens->pluck('id'))
+            ->with('dosen:id,nama,gelar_depan,gelar_belakang'); // Include dosen info
 
         // For dosen: filter by own grades OR if allowed to view others
         if ($currentDosenId && !$canViewOthersGrades) {
-            $scoresQuery->where('dosen_id', $currentDosenId);
+            // Check if current dosen is koordinator for THIS class using raw DB to avoid relation issues
+            $isKoordinator = \Illuminate\Support\Facades\DB::table('kelas_mk_dosen')
+                ->where('kelas_matakuliah_id', $kelasMatakuliah->id)
+                ->where('dosen_id', $currentDosenId)
+                ->where('is_koordinator', true)
+                ->exists();
+
+            if ($isKoordinator) {
+                // Koordinator sees own grades AND orphaned grades (null dosen_id)
+                $scoresQuery->where(function ($q) use ($currentDosenId) {
+                    $q->where('dosen_id', $currentDosenId)
+                        ->orWhereNull('dosen_id');
+                });
+            } else {
+                // Regular dosen sees ONLY own grades
+                $scoresQuery->where('dosen_id', $currentDosenId);
+            }
         }
 
-        $scores = $scoresQuery->get()->groupBy('mahasiswa_id');
+        // Get scores with dosen attribution
+        $allScores = $scoresQuery->get();
+
+        // Group by mahasiswa for main table
+        $scores = $allScores->groupBy('mahasiswa_id');
+
+        // Group by dosen for tab switching (available to all, content filtered by query above)
+        $scoresByDosen = $allScores->groupBy('dosen_id');
+
+        // Load settings for all dosens (for settings modal)
+        $dosenSettings = $canViewAll
+            ? \App\Models\KelasMkNilaiSettings::where('kelas_matakuliah_id', $kelasMatakuliah->id)->get()->keyBy('dosen_id')
+            : null;
 
         // Get Rekap (Final Grades)
         $rekaps = RekapNilai::where('kelas_matakuliah_id', $kelasMatakuliah->id)
@@ -211,6 +240,9 @@ class NilaiController extends Controller
                 'nama' => $d->dosen->nama_gelar ?? $d->dosen->nama,
                 'is_koordinator' => $d->is_koordinator,
             ]),
+            // Enhanced: All scores grouped by dosen for tabs (admin only)
+            'scoresByDosen' => $scoresByDosen,
+            'dosenSettings' => $dosenSettings,
         ]);
     }
 
@@ -219,12 +251,24 @@ class NilaiController extends Controller
         $request->validate([
             'grades' => 'required|array', // Structure: [{mahasiswa_id, component_id, nilai}]
             'action' => 'string|in:save,submit',
+            'target_dosen_id' => 'nullable|exists:dosens,id', // NEW: Allow targeting specific dosen
         ]);
 
         $action = $request->input('action', 'save');
         $user = Auth::user();
         $graderId = $user->id;
-        $dosenId = $user->dosen?->id; // Get current dosen's ID for team teaching
+        $dosenId = $user->dosen?->id; // Get current dosen's ID
+
+        // Admin/Staff/Koordinator Override Logic
+        $canManage = $user->can('nilai.approve') || $user->hasRole('administrator') || $user->isStaffProdi();
+        if ($canManage && $request->has('target_dosen_id')) {
+            $dosenId = $request->input('target_dosen_id');
+        } elseif (!$dosenId) {
+            // Fallback for Admin without explicit target -> use Koordinator
+            $koordinator = $kelasMatakuliah->dosens()->wherePivot('is_koordinator', true)->first();
+            $dosenId = $koordinator?->id;
+        }
+
         $kelasMatakuliah->load('kelas'); // Ensure kelas is loaded
         $prodiId = $kelasMatakuliah->kelas->prodi_id;
         $skalaNilais = SkalaNilai::forProdi($prodiId)->get();
@@ -650,9 +694,18 @@ class NilaiController extends Controller
             'data.*.grades' => 'required|array',
         ]);
 
+        if (!$kelasMatakuliah)
+            return response()->json(['error' => 'Kelas Kuliah tidak ditemukan.'], 404);
+
         $user = Auth::user();
         $graderId = $user->id;
-        $dosenId = $user->dosen?->id; // Get dosen_id for team teaching
+        $dosenId = $user->dosen?->id;
+
+        // If user is not a dosen (e.g. Admin/Staff), default to the Koordinator's ID
+        if (!$dosenId) {
+            $koordinator = $kelasMatakuliah->dosens()->wherePivot('is_koordinator', true)->first();
+            $dosenId = $koordinator?->id;
+        } // Get dosen_id for team teaching
         $prodiId = $kelasMatakuliah->kelas->prodi_id;
         $skalaNilais = SkalaNilai::forProdi($prodiId)->orderBy('min_nilai', 'desc')->get();
         // Load relationships needed for re-calc
@@ -726,5 +779,40 @@ class NilaiController extends Controller
             DB::rollBack();
             return back()->withErrors(['message' => 'Gagal import: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Save team teaching settings (deadline, visibility)
+     */
+    public function saveSettings(Request $request, KelasMatakuliah $kelasMatakuliah)
+    {
+        $user = Auth::user();
+        $canManage = $user->can('nilai.approve') || $user->hasRole('administrator') || $user->isStaffProdi();
+
+        if (!$canManage) {
+            return back()->withErrors(['message' => 'Tidak memiliki akses untuk mengatur settings.']);
+        }
+
+        $validated = $request->validate([
+            'settings' => 'required|array',
+            'settings.*.dosen_id' => 'required|exists:dosens,id',
+            'settings.*.deadline' => 'nullable|date',
+            'settings.*.allow_view_others' => 'boolean',
+        ]);
+
+        foreach ($validated['settings'] as $setting) {
+            \App\Models\KelasMkNilaiSettings::updateOrCreate(
+                [
+                    'kelas_matakuliah_id' => $kelasMatakuliah->id,
+                    'dosen_id' => $setting['dosen_id'],
+                ],
+                [
+                    'deadline' => $setting['deadline'] ?? null,
+                    'allow_view_others' => $setting['allow_view_others'] ?? false,
+                ]
+            );
+        }
+
+        return back()->with('success', 'Pengaturan team teaching berhasil disimpan.');
     }
 }

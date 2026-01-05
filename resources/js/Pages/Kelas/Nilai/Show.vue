@@ -153,66 +153,119 @@
                                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                             />
                         </svg>
-                        Submit Final
+                        {{ canViewAll ? "Publish" : "Submit Final" }}
                     </button>
                 </div>
             </div>
 
-            <!-- Team Teaching Info Card -->
+            <!-- Team Teaching Info Card with Tabs -->
             <div
                 v-if="teamDosens && teamDosens.length > 1"
                 class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-2xl p-4 border border-amber-200 dark:border-amber-800"
             >
-                <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center gap-3">
-                        <div class="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-xl">
-                            <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        <div
+                            class="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-xl"
+                        >
+                            <svg
+                                class="w-5 h-5 text-amber-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                />
                             </svg>
                         </div>
-                        <div>
-                            <span class="font-bold text-amber-800 dark:text-amber-300">Team Teaching</span>
-                            <div class="flex flex-wrap gap-2 mt-1">
-                                <span
-                                    v-for="dosen in teamDosens"
-                                    :key="dosen.id"
-                                    :class="[
-                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-                                        dosen.id === currentDosenId 
-                                            ? 'bg-amber-200 text-amber-800 ring-2 ring-amber-400'
-                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                                    ]"
-                                >
-                                    <svg v-if="dosen.is_koordinator" class="w-3 h-3 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                    </svg>
-                                    {{ dosen.nama }}
-                                    <span v-if="dosen.id === currentDosenId" class="text-[10px]">(Anda)</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <span 
-                            v-if="!canViewAll && !canViewOthersGrades"
-                            class="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs"
+                        <span
+                            class="font-bold text-amber-800 dark:text-amber-300"
+                            >Team Teaching</span
                         >
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                            </svg>
-                            Nilai Anda saja
-                        </span>
-                        <span 
-                            v-else-if="canViewAll || canViewOthersGrades"
-                            class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs"
-                        >
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            Lihat semua nilai
-                        </span>
                     </div>
+                    <!-- Settings Button (Admin/Staff only) -->
+                    <button
+                        v-if="canViewAll"
+                        @click="showSettingsModal = true"
+                        class="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-800 rounded-lg text-xs font-medium transition"
+                    >
+                        <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                            />
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                        </svg>
+                        Settings
+                    </button>
+                </div>
+
+                <!-- Dosen Tabs -->
+                <div class="flex flex-wrap gap-2">
+                    <button
+                        v-if="canViewAll || canViewOthersGrades"
+                        @click="selectedDosenTab = 'all'"
+                        :class="[
+                            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition',
+                            selectedDosenTab === 'all'
+                                ? 'bg-amber-500 text-white shadow-md'
+                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-amber-100',
+                        ]"
+                    >
+                        <svg
+                            class="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                            />
+                        </svg>
+                        Akumulasi
+                    </button>
+                    <button
+                        v-for="dosen in filteredDosenTabs"
+                        :key="dosen.id"
+                        @click="selectedDosenTab = dosen.id"
+                        :class="[
+                            'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition',
+                            selectedDosenTab === dosen.id
+                                ? 'bg-amber-500 text-white shadow-md'
+                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-amber-100',
+                        ]"
+                    >
+                        <svg
+                            v-if="dosen.is_koordinator"
+                            class="w-3 h-3"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                        >
+                            <path
+                                d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
+                            />
+                        </svg>
+                        {{ dosen.nama }}
+                    </button>
                 </div>
             </div>
 
@@ -552,14 +605,24 @@
                                         <input
                                             v-if="grades[mhs.id]"
                                             v-model="grades[mhs.id][comp.id]"
-                                            @input="clampGrade(mhs.id, comp.id)"
+                                            @input="
+                                                clampGrade(mhs.id, comp.id);
+                                                autosaveGrade(
+                                                    mhs.id,
+                                                    comp.id,
+                                                    $event.target.value
+                                                );
+                                            "
                                             type="number"
                                             min="0"
                                             max="100"
                                             step="0.01"
                                             :disabled="
                                                 inputMode === 'langsung' ||
-                                                comp.source_type === 'kehadiran'
+                                                comp.source_type ===
+                                                    'kehadiran' ||
+                                                (canViewAll &&
+                                                    selectedDosenTab === 'all')
                                             "
                                             :class="
                                                 comp.source_type === 'kehadiran'
@@ -567,7 +630,12 @@
                                                     : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
                                             "
                                             class="w-full px-3 py-2 border-2 rounded-lg focus:border-primary-500 focus:ring-0 text-center font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                                            placeholder="0"
+                                            :placeholder="
+                                                canViewAll &&
+                                                selectedDosenTab === 'all'
+                                                    ? 'Pilih Dosen'
+                                                    : '0'
+                                            "
                                         />
                                     </td>
 
@@ -1142,6 +1210,170 @@
                 </PrimaryButton>
             </template>
         </DialogModal>
+
+        <!-- Team Teaching Settings Modal -->
+        <DialogModal
+            :show="showSettingsModal"
+            @close="showSettingsModal = false"
+            maxWidth="md"
+        >
+            <template #title>
+                <div class="flex items-center gap-2">
+                    <svg
+                        class="w-5 h-5 text-amber-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                    </svg>
+                    Pengaturan Team Teaching
+                </div>
+            </template>
+            <template #content>
+                <div class="space-y-4">
+                    <div
+                        v-for="(setting, idx) in settingsForm"
+                        :key="setting.dosen_id"
+                        class="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl"
+                    >
+                        <div
+                            class="font-semibold text-gray-800 dark:text-white mb-3"
+                        >
+                            {{ getDosenName(setting.dosen_id) }}
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <InputLabel
+                                    for="deadline"
+                                    value="Deadline Input Nilai"
+                                />
+                                <TextInput
+                                    type="datetime-local"
+                                    v-model="settingsForm[idx].deadline"
+                                    class="mt-1 block w-full"
+                                />
+                            </div>
+                            <div class="flex items-end">
+                                <label
+                                    class="flex items-center gap-2 cursor-pointer"
+                                >
+                                    <Checkbox
+                                        v-model:checked="
+                                            settingsForm[idx].allow_view_others
+                                        "
+                                    />
+                                    <span
+                                        class="text-sm text-gray-600 dark:text-gray-400"
+                                        >Boleh lihat nilai dosen lain</span
+                                    >
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            <template #footer>
+                <SecondaryButton
+                    @click="showSettingsModal = false"
+                    class="mr-3"
+                >
+                    Batal
+                </SecondaryButton>
+                <PrimaryButton
+                    @click="saveSettings"
+                    :disabled="isSubmitting"
+                    class="bg-amber-600 hover:bg-amber-700"
+                >
+                    {{ isSubmitting ? "Menyimpan..." : "Simpan Pengaturan" }}
+                </PrimaryButton>
+            </template>
+        </DialogModal>
+
+        <!-- Global Toast Notification -->
+        <transition
+            enter-active-class="transform ease-out duration-300 transition"
+            enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+            enter-to-class="translate-y-0 opacity-100 sm:translate-x-0"
+            leave-active-class="transition ease-in duration-100"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div
+                v-if="toast.show"
+                class="fixed bottom-4 right-4 z-50 flex items-center w-full max-w-xs p-4 space-x-4 text-gray-500 bg-white rounded-lg shadow-2xl dark:text-gray-400 dark:bg-gray-800 border dark:border-gray-700"
+                role="alert"
+            >
+                <div
+                    v-if="toast.type === 'success'"
+                    class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-green-500 bg-green-100 rounded-lg dark:bg-green-800 dark:text-green-200"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                    >
+                        <path
+                            d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm3.707 8.207-4 4a1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 1.414-1.414L9 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414Z"
+                        />
+                    </svg>
+                    <span class="sr-only">Check icon</span>
+                </div>
+                <div
+                    v-else
+                    class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-red-500 bg-red-100 rounded-lg dark:bg-red-800 dark:text-red-200"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                    >
+                        <path
+                            d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm3.707 11.793a1 1 0 1 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 1.414-1.414L10 8.586l2.293-2.293a1 1 0 0 1 1.414 1.414L11.414 10l2.293 2.293Z"
+                        />
+                    </svg>
+                    <span class="sr-only">Error icon</span>
+                </div>
+                <div class="ml-3 text-sm font-normal">{{ toast.message }}</div>
+                <button
+                    type="button"
+                    class="ml-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700"
+                    @click="toast.show = false"
+                >
+                    <span class="sr-only">Close</span>
+                    <svg
+                        class="w-3 h-3"
+                        aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 14 14"
+                    >
+                        <path
+                            stroke="currentColor"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"
+                        />
+                    </svg>
+                </button>
+            </div>
+        </transition>
     </AppLayout>
 </template>
 
@@ -1149,6 +1381,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { Head, Link, router } from "@inertiajs/vue3";
 import axios from "axios"; // Ensure axios is imported for file processing
+import debounce from "lodash/debounce";
 import AppLayout from "@/Components/Layout/AppLayout.vue";
 import DialogModal from "@/Components/DialogModal.vue";
 import InputLabel from "@/Components/InputLabel.vue";
@@ -1172,6 +1405,8 @@ const props = defineProps({
     canViewOthersGrades: Boolean,
     canViewAll: Boolean,
     teamDosens: Array,
+    scoresByDosen: Object,
+    dosenSettings: Object,
 });
 
 const activeTab = ref("nilai");
@@ -1179,6 +1414,98 @@ const inputMode = ref("komponen"); // 'komponen' or 'langsung'
 const grades = ref({});
 const directFinalGrades = ref({});
 const isSubmitting = ref(false);
+
+// Team Teaching State
+const selectedDosenTab = ref("all");
+const showSettingsModal = ref(false);
+const settingsForm = ref([]);
+
+// Mutable local state for team teaching scores (to handle live edits + tab switching)
+const localScoresByDosen = ref({});
+const initializedLocalScores = ref(false);
+
+const initLocalScores = () => {
+    // Deep copy props to local state
+    if (props.scoresByDosen) {
+        localScoresByDosen.value = JSON.parse(
+            JSON.stringify(props.scoresByDosen)
+        );
+    }
+    initializedLocalScores.value = true;
+};
+
+// Filter tabs based on visibility settings
+const filteredDosenTabs = computed(() => {
+    if (!props.teamDosens) return [];
+
+    // Admin/Staff or setting enabled: show all
+    if (props.canViewAll || props.canViewOthersGrades) {
+        return props.teamDosens;
+    }
+
+    // Otherwise show only current dosen
+    return props.teamDosens.filter((d) => d.id === props.currentDosenId);
+});
+
+// Force update trigger for deep reactivity
+const updateTrigger = ref(0);
+
+// Computed: Filter scores by selected dosen tab
+const filteredScores = computed(() => {
+    // Depend on trigger
+    updateTrigger.value;
+
+    // Ensure we work with local state if initialized
+    const sourceScores = initializedLocalScores.value
+        ? localScoresByDosen.value
+        : props.scoresByDosen || {};
+
+    if (selectedDosenTab.value === "all") {
+        // RECALCULATE accumulation from local state to ensure reactivity
+        // We need to group ALL scores from ALL dosens by mahasiswa_id
+        const allGrouped = {};
+
+        Object.values(sourceScores).forEach((dosenScores) => {
+            if (Array.isArray(dosenScores)) {
+                dosenScores.forEach((score) => {
+                    const mId = score.mahasiswa_id;
+                    if (!allGrouped[mId]) allGrouped[mId] = [];
+                    allGrouped[mId].push(score);
+                });
+            }
+        });
+
+        return allGrouped;
+    }
+
+    // Find koordinator ID to check if we should include "orphaned" (null dosen_id) scores
+    const koordinator = props.teamDosens?.find((d) => d.is_koordinator);
+    const isKoordinatorTab =
+        koordinator && koordinator.id === selectedDosenTab.value;
+
+    // Filter to only show selected dosen's scores
+    let dosenScores = sourceScores[selectedDosenTab.value] || [];
+
+    // If selected tab is Koordinator, append scores with null/empty dosen_id (legacy or admin input)
+    if (isKoordinatorTab && sourceScores[""]) {
+        // Only append if not already in the main list (avoid dupes if logic overlaps)
+        const orphaned = sourceScores[""];
+        // Simple merge might duplicate if IDs overlap, but orphans shouldn't have dosen_id so it's disjoint from specific dosen_id
+        dosenScores = [...dosenScores, ...orphaned];
+    }
+
+    if (!dosenScores.length) return {};
+
+    // Regroup by mahasiswa_id like original scores format
+    const grouped = {};
+    dosenScores.forEach((score) => {
+        if (!grouped[score.mahasiswa_id]) {
+            grouped[score.mahasiswa_id] = [];
+        }
+        grouped[score.mahasiswa_id].push(score);
+    });
+    return grouped;
+});
 
 // Bulk Action State
 const showBulkModal = ref(false);
@@ -1371,6 +1698,8 @@ const applyBulkInput = () => {
 };
 
 const initGrades = () => {
+    const currentScores = filteredScores.value || props.scores || {};
+
     props.mahasiswas.forEach((mhs) => {
         if (!grades.value[mhs.id]) grades.value[mhs.id] = {};
 
@@ -1383,11 +1712,25 @@ const initGrades = () => {
             // Check if this component is auto-filled from kehadiran data
             if (comp.source_type === "kehadiran") {
                 val = props.attendanceSummary[mhs.id]?.percent || 0;
-            } else if (props.scores[mhs.id]) {
-                const found = props.scores[mhs.id].find(
-                    (s) => s.komponen_nilai_id === comp.id
+            } else if (currentScores[mhs.id]) {
+                // Determine source: If 'all' tab, we might have multiple grades for same component
+                // If specific tab, filteredScores already filters by dosen_id, so only 1 result usually.
+
+                const scoresForComp = currentScores[mhs.id].filter(
+                    (s) => s.komponen_nilai_id == comp.id
                 );
-                if (found) val = found.nilai;
+
+                if (scoresForComp.length > 0) {
+                    // Calculate Average
+                    const sum = scoresForComp.reduce(
+                        (acc, curr) => acc + parseFloat(curr.nilai),
+                        0
+                    );
+                    val = sum / scoresForComp.length;
+
+                    // Format to clean decimal (optional, usually handled by display)
+                    val = parseFloat(val.toFixed(2));
+                }
             }
 
             grades.value[mhs.id][comp.id] = val;
@@ -1402,6 +1745,8 @@ const initGrades = () => {
 onMounted(() => {
     // Select all by default as requested
     selectedStudents.value = new Set(props.mahasiswas.map((m) => m.id));
+    // CRITICAL: Initialize local scores BEFORE initGrades so filteredScores uses local state
+    initLocalScores();
     initGrades();
 });
 
@@ -1413,6 +1758,11 @@ watch(
     },
     { deep: true }
 );
+
+// Watch for team teaching tab change
+watch(selectedDosenTab, () => {
+    initGrades();
+});
 
 // Clamp grade value between 0 and 100
 const clampGrade = (mhsId, compId) => {
@@ -1478,6 +1828,84 @@ const calcFinal = (mhsId) => {
     return { score: total.toFixed(2), letter };
 };
 
+// Autosave Logic (Live Edit)
+const isAutosaving = ref(false);
+
+// Toast Logic
+const toast = ref({ show: false, message: "", type: "success" });
+const showToast = (message, type = "success") => {
+    toast.value = { show: true, message, type };
+    setTimeout(() => {
+        toast.value.show = false;
+    }, 3000);
+};
+
+const triggerServerSave = debounce((mhsId, compId, val, targetDosenId) => {
+    isAutosaving.value = true;
+
+    axios
+        .post(route("dosen.nilai.store", props.kelasMatakuliah.id), {
+            grades: [
+                {
+                    mahasiswa_id: mhsId,
+                    komponen_nilai_id: compId,
+                    nilai: val,
+                },
+            ],
+            action: "save",
+            target_dosen_id: targetDosenId,
+        })
+        .then(() => {
+            isAutosaving.value = false;
+            showToast("Nilai tersimpan otomatis", "success");
+        })
+        .catch((err) => {
+            console.error("Autosave failed", err);
+            isAutosaving.value = false;
+            showToast("Gagal menyimpan nilai! Cek koneksi.", "error");
+        });
+}, 800);
+
+const autosaveGrade = (mhsId, compId, val) => {
+    // Determine target dosen ID
+    let targetDosenId = null;
+    if (selectedDosenTab.value !== "all") {
+        targetDosenId = selectedDosenTab.value;
+    } else {
+        showToast(
+            "Tidak dapat mengedit di tab Akumulasi. Pilih dosen spesifik.",
+            "error"
+        );
+        return;
+    }
+
+    // Update LOCAL state immediately (Synchronously)
+    if (!localScoresByDosen.value[targetDosenId]) {
+        localScoresByDosen.value[targetDosenId] = [];
+    }
+
+    // Check if entry exists in local state (Use loose equality for type safety)
+    const existingIndex = localScoresByDosen.value[targetDosenId].findIndex(
+        (s) => s.mahasiswa_id == mhsId && s.komponen_nilai_id == compId
+    );
+
+    if (existingIndex !== -1) {
+        localScoresByDosen.value[targetDosenId][existingIndex].nilai = val;
+    } else {
+        localScoresByDosen.value[targetDosenId].push({
+            mahasiswa_id: mhsId,
+            komponen_nilai_id: compId,
+            nilai: val,
+        });
+    }
+
+    // Force UI Reactivity immediately
+    updateTrigger.value++;
+
+    // Trigger debounced server save
+    triggerServerSave(mhsId, compId, val, targetDosenId);
+};
+
 const getGradeClass = (letter) => {
     const map = {
         A: "bg-green-100 text-green-700",
@@ -1488,6 +1916,7 @@ const getGradeClass = (letter) => {
         "C+": "bg-yellow-100 text-yellow-700",
         C: "bg-yellow-100 text-yellow-600",
         D: "bg-orange-100 text-orange-600",
+
         E: "bg-red-100 text-red-600",
     };
     return map[letter] || "bg-gray-100 text-gray-600";
@@ -1537,4 +1966,49 @@ const submitForm = (action) => {
         }
     );
 };
+
+// Team Teaching Settings Functions
+const getDosenName = (dosenId) => {
+    const dosen = props.teamDosens?.find((d) => d.id === dosenId);
+    return dosen?.nama || `Dosen ID ${dosenId}`;
+};
+
+const initSettingsForm = () => {
+    if (!props.teamDosens) return;
+    settingsForm.value = props.teamDosens.map((dosen) => {
+        const existing = props.dosenSettings?.[dosen.id];
+        return {
+            dosen_id: dosen.id,
+            deadline: existing?.deadline ? existing.deadline.slice(0, 16) : "",
+            allow_view_others: existing?.allow_view_others ?? false,
+        };
+    });
+};
+
+const saveSettings = () => {
+    isSubmitting.value = true;
+    router.post(
+        route("dosen.nilai.saveSettings", props.kelasMatakuliah.id),
+        { settings: settingsForm.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showSettingsModal.value = false;
+            },
+            onFinish: () => {
+                isSubmitting.value = false;
+            },
+        }
+    );
+};
+
+// Initialize settings form when modal opens
+watch(showSettingsModal, (val) => {
+    if (val) initSettingsForm();
+});
+
+// Watch for Tab Change to re-initialize grades with correct context
+watch(selectedDosenTab, () => {
+    initGrades();
+});
 </script>

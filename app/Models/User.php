@@ -127,4 +127,12 @@ class User extends Authenticatable
     {
         return $this->hasOne(Dosen::class);
     }
+
+    /**
+     * Get the mahasiswa profile associated with the user.
+     */
+    public function mahasiswa()
+    {
+        return $this->hasOne(Mahasiswa::class);
+    }
 }

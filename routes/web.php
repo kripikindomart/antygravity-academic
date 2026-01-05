@@ -113,6 +113,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [\App\Http\Controllers\NilaiController::class, 'index'])->name('index');
         Route::get('/{kelasMatakuliah}', [\App\Http\Controllers\NilaiController::class, 'show'])->name('show');
         Route::post('/{kelasMatakuliah}', [\App\Http\Controllers\NilaiController::class, 'store'])->name('store');
+
+        // Team Teaching Settings (Admin/Staff only)
+        Route::post('/{kelasMatakuliah}/settings', [\App\Http\Controllers\NilaiController::class, 'saveSettings'])->name('saveSettings');
     });
 
     // Master Data - Program Studi
