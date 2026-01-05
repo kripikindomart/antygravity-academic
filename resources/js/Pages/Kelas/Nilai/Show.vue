@@ -1415,8 +1415,9 @@ const grades = ref({});
 const directFinalGrades = ref({});
 const isSubmitting = ref(false);
 
-// Team Teaching State
-const selectedDosenTab = ref("all");
+// Team Teaching State - Default tab based on role
+// Admin/Staff/Akademik = "all" (Akumulasi), Dosen = their own tab
+const selectedDosenTab = ref(null); // Will be set in onMounted
 const showSettingsModal = ref(false);
 const settingsForm = ref([]);
 
@@ -1743,8 +1744,23 @@ const initGrades = () => {
 };
 
 onMounted(() => {
-    // Select all by default as requested
+    // Select all students by default
     selectedStudents.value = new Set(props.mahasiswas.map((m) => m.id));
+
+    // Set default tab based on user role
+    // Admin/Staff/Akademik (canViewAll) = "all" (Akumulasi tab)
+    // Dosen = their own tab (currentDosenId)
+    if (props.canViewAll) {
+        selectedDosenTab.value = "all";
+    } else if (props.currentDosenId) {
+        selectedDosenTab.value = props.currentDosenId;
+    } else if (props.teamDosens && props.teamDosens.length > 0) {
+        // Fallback: first available dosen tab
+        selectedDosenTab.value = props.teamDosens[0].id;
+    } else {
+        selectedDosenTab.value = "all";
+    }
+
     // CRITICAL: Initialize local scores BEFORE initGrades so filteredScores uses local state
     initLocalScores();
     initGrades();
