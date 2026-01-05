@@ -158,6 +158,64 @@
                 </div>
             </div>
 
+            <!-- Team Teaching Info Card -->
+            <div
+                v-if="teamDosens && teamDosens.length > 1"
+                class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-2xl p-4 border border-amber-200 dark:border-amber-800"
+            >
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-xl">
+                            <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <span class="font-bold text-amber-800 dark:text-amber-300">Team Teaching</span>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                <span
+                                    v-for="dosen in teamDosens"
+                                    :key="dosen.id"
+                                    :class="[
+                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+                                        dosen.id === currentDosenId 
+                                            ? 'bg-amber-200 text-amber-800 ring-2 ring-amber-400'
+                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                    ]"
+                                >
+                                    <svg v-if="dosen.is_koordinator" class="w-3 h-3 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                    </svg>
+                                    {{ dosen.nama }}
+                                    <span v-if="dosen.id === currentDosenId" class="text-[10px]">(Anda)</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span 
+                            v-if="!canViewAll && !canViewOthersGrades"
+                            class="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs"
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                            Nilai Anda saja
+                        </span>
+                        <span 
+                            v-else-if="canViewAll || canViewOthersGrades"
+                            class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs"
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Lihat semua nilai
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Skala Nilai Reference Card -->
             <div
                 class="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-2xl p-4 border border-indigo-100 dark:border-indigo-800"
@@ -1088,7 +1146,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { Head, Link, router } from "@inertiajs/vue3";
 import axios from "axios"; // Ensure axios is imported for file processing
 import AppLayout from "@/Components/Layout/AppLayout.vue";
@@ -1109,6 +1167,11 @@ const props = defineProps({
     attendanceSummary: Object,
     attendanceDetail: Array,
     totalMeetings: Number,
+    // Team Teaching Props
+    currentDosenId: Number,
+    canViewOthersGrades: Boolean,
+    canViewAll: Boolean,
+    teamDosens: Array,
 });
 
 const activeTab = ref("nilai");
@@ -1307,23 +1370,20 @@ const applyBulkInput = () => {
     closeBulkModal();
 };
 
-onMounted(() => {
-    // Select all by default as requested
-    selectedStudents.value = new Set(props.mahasiswas.map((m) => m.id));
-
+const initGrades = () => {
     props.mahasiswas.forEach((mhs) => {
-        grades.value[mhs.id] = {};
+        if (!grades.value[mhs.id]) grades.value[mhs.id] = {};
+
+        // Only reset direct grades if not editing (optional, but safer to re-calc)
         let existingTotal = 0;
 
         props.komponens.forEach((comp) => {
             let val = 0;
 
-            // Check if this component is auto-filled from kehadiran data (based on source_type mapping)
+            // Check if this component is auto-filled from kehadiran data
             if (comp.source_type === "kehadiran") {
-                // Use attendance percentage as the grade value
                 val = props.attendanceSummary[mhs.id]?.percent || 0;
             } else if (props.scores[mhs.id]) {
-                // Use existing saved score for manual components
                 const found = props.scores[mhs.id].find(
                     (s) => s.komponen_nilai_id === comp.id
                 );
@@ -1334,11 +1394,25 @@ onMounted(() => {
             existingTotal += (val * parseFloat(comp.bobot)) / 100;
         });
 
-        // Initialize direct final grade from existing scores
         directFinalGrades.value[mhs.id] =
             existingTotal > 0 ? existingTotal.toFixed(2) : "";
     });
+};
+
+onMounted(() => {
+    // Select all by default as requested
+    selectedStudents.value = new Set(props.mahasiswas.map((m) => m.id));
+    initGrades();
 });
+
+// Watch for prop updates (e.g. after Import or Save)
+watch(
+    () => props.scores,
+    () => {
+        initGrades();
+    },
+    { deep: true }
+);
 
 // Clamp grade value between 0 and 100
 const clampGrade = (mhsId, compId) => {

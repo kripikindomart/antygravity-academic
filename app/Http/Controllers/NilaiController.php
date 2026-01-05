@@ -17,34 +17,40 @@ class NilaiController extends Controller
     {
         $user = Auth::user();
 
-        // Determine user type and filter accordingly
-        $isAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
-        $isAkademik = $user->isAkademik();
-        $isStaffProdi = $user->isStaffProdi() && !$isAkademik;
-        $isDosen = $user->isDosen() && !$isAkademik && !$isStaffProdi;
-
-        // Get dosen_id if user is linked to dosen
-        $dosenId = $user->dosen?->id;
+        // Determine access level based on permissions and user context
+        // 1. Can View All? (Akademik, Admin) via 'nilai.approve' or 'nilai.do_everything' (conceptually)
+        // We use 'nilai.approve' as a proxy for "Head/Admin" level access to grades.
+        $canViewAll = $user->can('nilai.approve') || $user->hasRole('administrator');
 
         $query = KelasMatakuliah::query()
             ->with(['kelas.prodi', 'kelas.semester', 'mataKuliah', 'dosens.dosen']);
 
-        // Apply filters based on user role
-        if ($isDosen && $dosenId) {
-            // Dosen: only show their classes
-            $query->whereHas('dosens', function ($q) use ($dosenId) {
-                $q->where('dosen_id', $dosenId);
-            });
-        } elseif ($isStaffProdi) {
-            // Staff Prodi: show classes in their prodi
-            $userProdiIds = $user->prodis()->pluck('program_studis.id');
+        $userProdiIds = $user->prodis()->pluck('program_studis.id');
+        $dosenId = $user->dosen?->id;
+
+        $userRole = 'dosen'; // Default fallback
+
+        if ($canViewAll) {
+            // Show all classes (Admin/Akademik)
+            $userRole = 'admin'; // Or 'akademik', frontend treats them similarly for view all
+            if ($user->can('nilai.approve'))
+                $userRole = 'akademik';
+            if ($user->hasRole('administrator'))
+                $userRole = 'admin';
+        } elseif ($userProdiIds->isNotEmpty()) {
+            // Staff Prodi: filter by assigned prodis
             $query->whereHas('kelas', function ($q) use ($userProdiIds) {
                 $q->whereIn('prodi_id', $userProdiIds);
             });
-        } elseif ($isAdmin || $isAkademik) {
-            // Admin/Akademik: show all classes (no filter)
+            $userRole = 'staff_prodi';
+        } elseif ($dosenId) {
+            // Dosen: filter by assigned classes
+            $query->whereHas('dosens', function ($q) use ($dosenId) {
+                $q->where('dosen_id', $dosenId);
+            });
+            $userRole = 'dosen';
         } else {
-            // Unknown role - show nothing
+            // No access
             $query->whereRaw('1 = 0');
         }
 
@@ -69,12 +75,16 @@ class NilaiController extends Controller
         return Inertia::render('Kelas/Nilai/Index', [
             'items' => $items,
             'filters' => $request->only(['search']),
-            'userRole' => $isAdmin ? 'admin' : ($isAkademik ? 'akademik' : ($isStaffProdi ? 'staff_prodi' : 'dosen')),
+            'userRole' => $userRole,
         ]);
     }
 
     public function show(KelasMatakuliah $kelasMatakuliah)
     {
+        $user = Auth::user();
+        $currentDosenId = $user->dosen?->id;
+        $canViewAll = $user->can('nilai.approve') || $user->hasRole('administrator') || $user->isStaffProdi();
+
         // Load data needed for grading interface
         $kelasMatakuliah->load([
             'kelas.mahasiswas' => function ($q) {
@@ -82,6 +92,7 @@ class NilaiController extends Controller
             },
             'mataKuliah',
             'kelas.prodi', // Load prodi through kelas
+            'dosens.dosen', // Load team teaching dosens
         ]);
 
         $prodiId = $kelasMatakuliah->kelas->prodi_id;
@@ -98,10 +109,26 @@ class NilaiController extends Controller
                 ->get();
         }
 
-        // Get existing scores
-        $scores = NilaiMahasiswa::whereIn('komponen_nilai_id', $komponens->pluck('id'))
-            ->get()
-            ->groupBy('mahasiswa_id');
+        // === TEAM TEACHING VISIBILITY LOGIC ===
+        // Check if current dosen can view other dosen's grades
+        $canViewOthersGrades = $canViewAll;
+        if ($currentDosenId && !$canViewAll) {
+            $settings = \App\Models\KelasMkNilaiSettings::where('kelas_matakuliah_id', $kelasMatakuliah->id)
+                ->where('dosen_id', $currentDosenId)
+                ->first();
+            $canViewOthersGrades = $settings?->allow_view_others ?? false;
+        }
+
+        // Build scores query
+        $scoresQuery = NilaiMahasiswa::where('kelas_matakuliah_id', $kelasMatakuliah->id)
+            ->whereIn('komponen_nilai_id', $komponens->pluck('id'));
+
+        // For dosen: filter by own grades OR if allowed to view others
+        if ($currentDosenId && !$canViewOthersGrades) {
+            $scoresQuery->where('dosen_id', $currentDosenId);
+        }
+
+        $scores = $scoresQuery->get()->groupBy('mahasiswa_id');
 
         // Get Rekap (Final Grades)
         $rekaps = RekapNilai::where('kelas_matakuliah_id', $kelasMatakuliah->id)
@@ -175,6 +202,15 @@ class NilaiController extends Controller
             'attendanceSummary' => $attendanceSummary,
             'attendanceDetail' => $attendanceDetail,
             'totalMeetings' => $totalMeetings,
+            // Team Teaching Context
+            'currentDosenId' => $currentDosenId,
+            'canViewOthersGrades' => $canViewOthersGrades,
+            'canViewAll' => $canViewAll,
+            'teamDosens' => $kelasMatakuliah->dosens->map(fn($d) => [
+                'id' => $d->dosen_id,
+                'nama' => $d->dosen->nama_gelar ?? $d->dosen->nama,
+                'is_koordinator' => $d->is_koordinator,
+            ]),
         ]);
     }
 
@@ -186,7 +222,9 @@ class NilaiController extends Controller
         ]);
 
         $action = $request->input('action', 'save');
-        $graderId = Auth::id();
+        $user = Auth::user();
+        $graderId = $user->id;
+        $dosenId = $user->dosen?->id; // Get current dosen's ID for team teaching
         $kelasMatakuliah->load('kelas'); // Ensure kelas is loaded
         $prodiId = $kelasMatakuliah->kelas->prodi_id;
         $skalaNilais = SkalaNilai::forProdi($prodiId)->get();
@@ -197,19 +235,22 @@ class NilaiController extends Controller
             $components = \App\Models\KomponenNilai::whereNull('prodi_id')->where('is_active', true)->get();
         }
 
-        DB::transaction(function () use ($request, $kelasMatakuliah, $graderId, $skalaNilais, $components, $action) {
+        DB::transaction(function () use ($request, $kelasMatakuliah, $graderId, $dosenId, $skalaNilais, $components, $action) {
 
-            // 1. Save Raw Scores
+            // 1. Save Raw Scores (with dosen_id for team teaching)
             foreach ($request->grades as $g) {
                 if (isset($g['nilai']) && $g['nilai'] !== null) {
                     NilaiMahasiswa::updateOrCreate(
                         [
+                            'kelas_matakuliah_id' => $kelasMatakuliah->id,
                             'komponen_nilai_id' => $g['komponen_nilai_id'],
                             'mahasiswa_id' => $g['mahasiswa_id'],
+                            'dosen_id' => $dosenId, // Include dosen_id in unique key for team teaching
                         ],
                         [
                             'nilai' => $g['nilai'],
                             'grader_id' => $graderId,
+                            'status' => $action === 'submit' ? 'submitted' : 'draft',
                         ]
                     );
                 }
@@ -222,15 +263,24 @@ class NilaiController extends Controller
             foreach ($studentIds as $mhsId) {
                 $totalScore = 0;
 
-                // Fetch fresh scores for this student
-                $studentScores = NilaiMahasiswa::where('mahasiswa_id', $mhsId)
+                // Fetch ALL scores for this student from ALL dosens (for team teaching averaging)
+                $allStudentScores = NilaiMahasiswa::where('kelas_matakuliah_id', $kelasMatakuliah->id)
+                    ->where('mahasiswa_id', $mhsId)
                     ->whereIn('komponen_nilai_id', $components->pluck('id'))
                     ->get()
-                    ->keyBy('komponen_nilai_id');
+                    ->groupBy('komponen_nilai_id');
 
                 foreach ($components as $comp) {
-                    $score = isset($studentScores[$comp->id]) ? $studentScores[$comp->id]->nilai : 0;
-                    $totalScore += ($score * $comp->bobot / 100);
+                    $scoresForComponent = $allStudentScores->get($comp->id, collect());
+
+                    if ($scoresForComponent->isEmpty()) {
+                        $avgScore = 0;
+                    } else {
+                        // Average scores from all dosens who graded this component
+                        $avgScore = $scoresForComponent->avg('nilai');
+                    }
+
+                    $totalScore += ($avgScore * $comp->bobot / 100);
                 }
 
                 // Determine Grade Letter
@@ -272,14 +322,219 @@ class NilaiController extends Controller
     }
     public function downloadTemplate(KelasMatakuliah $kelasMatakuliah)
     {
+        // Revert to Prodi-based lookup as kelas_matakuliah_id column is missing in DB
         $prodiId = $kelasMatakuliah->kelas->prodi_id;
         $komponens = \App\Models\KomponenNilai::where('prodi_id', $prodiId)->where('is_active', true)->get();
         if ($komponens->isEmpty()) {
             $komponens = \App\Models\KomponenNilai::whereNull('prodi_id')->where('is_active', true)->get();
         }
 
-        $filename = 'Template_Nilai_' . $kelasMatakuliah->kelas->nama . '_' . ($kelasMatakuliah->mataKuliah->kode ?? 'MK') . '.xlsx';
-        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\NilaiTemplateExport($kelasMatakuliah, $komponens), $filename);
+        $skalaNilais = SkalaNilai::forProdi($kelasMatakuliah->kelas->prodi_id)->orderBy('min_nilai', 'desc')->get();
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // === INFO HEADER (Rows 1-6) ===
+        $mkKode = $kelasMatakuliah->mataKuliah->kode ?? '-';
+        $mkNama = $kelasMatakuliah->mataKuliah->nama ?? '-';
+
+        // Fetch Team Teaching Dosens
+        $dosens = $kelasMatakuliah->dosens()->with('dosen')->get();
+        if ($dosens->isNotEmpty()) {
+            $dosenNama = $dosens->map(function ($d) {
+                return $d->dosen->nama_gelar ?? $d->dosen->nama;
+            })->unique()->join(' / ');
+        } else {
+            // Fallback to Main Class Dosen
+            $dosenNama = $kelasMatakuliah->kelas->dosen->nama_gelar ?? ($kelasMatakuliah->kelas->dosen->nama ?? '-');
+        }
+
+        $prodiNama = $kelasMatakuliah->kelas->prodi->nama ?? '-';
+        $semesterNama = $kelasMatakuliah->kelas->semester->nama ?? '-';
+        $taNama = $kelasMatakuliah->kelas->semester->tahunAkademik->nama ?? '-';
+
+        $info = [
+            ['DAFTAR NILAI'],
+            [''],
+            ['KODE MK', ': ' . $mkKode],
+            ['MATA KULIAH', ': ' . $mkNama],
+            ['DOSEN', ': ' . $dosenNama],
+            ['PROGRAM STUDI', ': ' . $prodiNama],
+            ['SEMESTER / T.A.', ': ' . $semesterNama . ' / ' . $taNama],
+            ['']
+        ];
+
+        $sheet->fromArray($info, NULL, 'A1');
+        $sheet->mergeCells('A1:F1');
+        $sheet->mergeCells('C3:F3');
+        $sheet->mergeCells('C4:F4');
+        $sheet->mergeCells('C5:F5');
+        $sheet->mergeCells('C6:F6');
+        $sheet->mergeCells('C7:F7');
+
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A3:A7')->getFont()->setBold(true);
+
+        // === TABLE HEADER (Row 9) ===
+        $headerRow = 9;
+        $headers = ['NO', 'NIM', 'NAMA'];
+
+        $currentColC = 'D';
+
+        $compCols = []; // [compId => ColLetter]
+        $kehadiranCol = null;
+
+        foreach ($komponens as $comp) {
+            $headers[] = $comp->nama . "\n(ID:" . $comp->id . ")\n" . $comp->bobot . '%';
+            $compCols[$comp->id] = $currentColC;
+            if ($comp->source_type === 'kehadiran') {
+                $kehadiranCol = $currentColC;
+            }
+            $currentColC++;
+        }
+
+        $headers[] = "TOTAL";
+        $totalCol = $currentColC;
+        $currentColC++;
+
+        $headers[] = "HURUF";
+        $hurufCol = $currentColC;
+
+        $sheet->fromArray([$headers], NULL, 'A' . $headerRow);
+
+        // --- STYLING ---
+        // Header Style
+        $headerRange = 'A' . $headerRow . ':' . $hurufCol . $headerRow;
+        $sheet->getStyle($headerRange)->getFont()->setBold(true);
+        $sheet->getStyle($headerRange)->getAlignment()->setWrapText(true);
+        $sheet->getStyle($headerRange)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle($headerRange)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+        $sheet->getStyle($headerRange)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        $sheet->getStyle($headerRange)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FFE0E0E0');
+
+        // === PREPARE ATTENDANCE DATA ===
+        // 1. Find Jadwal IDs for this KelasMK
+        $jadwalIds = \App\Models\Jadwal::where('kelas_id', $kelasMatakuliah->kelas_id)
+            ->where('mata_kuliah_id', $kelasMatakuliah->mata_kuliah_id)
+            ->pluck('id');
+
+        // 2. Count Total Pertemuan (Scheduled/Done)
+        $totalPertemuan = \App\Models\JadwalPertemuan::whereIn('jadwal_id', $jadwalIds)
+            ->whereIn('status', ['terjadwal', 'selesai'])
+            ->count();
+
+        // 3. Get Student Attendance Counts
+        $studentAttendance = [];
+        if ($totalPertemuan > 0) {
+            $attendanceCounts = \App\Models\Absensi::whereIn('jadwal_pertemuan_id', function ($q) use ($jadwalIds) {
+                $q->select('id')->from('jadwal_pertemuans')->whereIn('jadwal_id', $jadwalIds);
+            })
+                ->where('status', 'hadir')
+                ->select('mahasiswa_id', DB::raw('count(*) as total'))
+                ->groupBy('mahasiswa_id')
+                ->pluck('total', 'mahasiswa_id');
+
+            foreach ($attendanceCounts as $mhsId => $count) {
+                $score = ($count / $totalPertemuan) * 100;
+                $studentAttendance[$mhsId] = min(100, round($score, 2));
+            }
+        }
+
+        // === DATA ===
+        $rowIdx = $headerRow + 1;
+        $no = 1;
+        $kelasMatakuliah->load([
+            'kelas.mahasiswas' => function ($q) {
+                $q->orderBy('nama');
+            }
+        ]);
+
+        // Formulas
+        $formulaParts = [];
+        foreach ($komponens as $comp) {
+            $col = $compCols[$comp->id];
+            $weight = $comp->bobot;
+            $formulaParts[] = "{$col}{ROW}*{$weight}%";
+        }
+        $totalFormulaTpl = "=" . implode('+', $formulaParts);
+
+        $hurufFormulaTpl = "=";
+        $closingParens = "";
+        foreach ($skalaNilais as $skala) {
+            $hurufFormulaTpl .= "IF({$totalCol}{ROW}>={$skala->min_nilai},\"{$skala->huruf}\",";
+            $closingParens .= ")";
+        }
+        $hurufFormulaTpl .= "\"E\"" . $closingParens;
+
+        foreach ($kelasMatakuliah->kelas->mahasiswas as $mhs) {
+            $rowHtml = [$no++, $mhs->nim, $mhs->nama];
+
+            // Component Columns
+            foreach ($komponens as $c) {
+                // If Kehadiran, pre-fill
+                if ($c->source_type === 'kehadiran') {
+                    $score = $studentAttendance[$mhs->id] ?? 0;
+                    $rowHtml[] = $score;
+                } else {
+                    $rowHtml[] = ''; // Manual Input
+                }
+            }
+
+            // Formulas
+            $rowHtml[] = str_replace('{ROW}', $rowIdx, $totalFormulaTpl);
+            $rowHtml[] = str_replace('{ROW}', $rowIdx, $hurufFormulaTpl);
+
+            $sheet->fromArray([$rowHtml], NULL, 'A' . $rowIdx);
+
+            // Force NIM as String
+            $sheet->getCell('B' . $rowIdx)->setValueExplicit($mhs->nim, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+            $rowIdx++;
+        }
+
+        // === COLUMN STYLING ===
+        $lastRow = $rowIdx - 1;
+
+        // 1. Read-Only Columns (Yellow): No, NIM, Nama
+        $sheet->getStyle('A' . ($headerRow + 1) . ':C' . $lastRow)
+            ->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FFFFFFE0'); // Light Yellow
+
+        // 2. Input Columns (Green): Manual Components
+        foreach ($compCols as $compId => $col) {
+            $isKehadiran = false;
+            foreach ($komponens as $k)
+                if ($k->id == $compId && $k->source_type === 'kehadiran')
+                    $isKehadiran = true;
+
+            $range = $col . ($headerRow + 1) . ':' . $col . $lastRow;
+            $color = $isKehadiran ? 'FFFFFFE0' : 'FFC6EFCE'; // Yellow if Kehadiran, Green if Manual
+
+            $sheet->getStyle($range)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB($color);
+        }
+
+        // 3. Calculated Columns (Yellow): Total, Huruf
+        $sheet->getStyle($totalCol . ($headerRow + 1) . ':' . $hurufCol . $lastRow)
+            ->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FFFFFFE0');
+
+        // Borders for Data
+        if ($lastRow > $headerRow) {
+            $sheet->getStyle('A' . ($headerRow + 1) . ':' . $hurufCol . $lastRow)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        }
+
+        // AutoSize
+        foreach (range('A', $hurufCol) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $filename = 'Template_Nilai_' . preg_replace('/[^A-Za-z0-9\-]/', '_', $kelasMatakuliah->kelas->nama) . '.xlsx';
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
     public function importPreview(Request $request, KelasMatakuliah $kelasMatakuliah)
@@ -288,31 +543,71 @@ class NilaiController extends Controller
             'file' => 'required|mimes:xlsx,xls,csv',
         ]);
 
-        $data = \Maatwebsite\Excel\Facades\Excel::toArray([], $request->file('file'));
+        $filePath = $request->file('file')->getPathname();
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $data = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Gagal membaca file: ' . $e->getMessage()], 400);
+        }
+
         if (empty($data))
             return response()->json(['error' => 'File kosong'], 400);
 
-        $rows = $data[0]; // Sheet 1
-        $header = array_shift($rows); // Row 1
+        // Find Header
+        $headerRowIndex = null;
+        $header = [];
 
-        // Parse Header to find Component IDs
-        $componentMap = []; // index => components_id
-        foreach ($header as $index => $colName) {
-            // Check for ID in format "Name (ID:123)"
-            if (preg_match('/\(ID:(\d+)\)/', $colName, $matches)) {
-                $componentMap[$index] = $matches[1];
+        foreach ($data as $index => $row) {
+            $rowString = implode(' ', array_map('strval', $row));
+            if (stripos($rowString, 'NIM') !== false && stripos($rowString, 'ID:') !== false) {
+                $headerRowIndex = $index;
+                $header = $row;
+                break;
             }
         }
 
-        if (empty($componentMap)) {
-            return response()->json(['error' => 'Format header tidak valid. Pastikan menggunakan template yang disediakan.'], 400);
+        if ($headerRowIndex === null) {
+            foreach ($data as $index => $row) {
+                if (isset($row[1]) && stripos($row[1], 'NIM') !== false) {
+                    $headerRowIndex = $index;
+                    $header = $row;
+                    break;
+                }
+            }
         }
+
+        if ($headerRowIndex === null)
+            return response()->json(['error' => 'Format header tidak dikenali. Pastikan kolom NIM ada.'], 400);
+
+        // Parse Header
+        $componentMap = [];
+        $nimIndex = -1;
+
+        foreach ($header as $index => $colName) {
+            if ($colName) {
+                if (preg_match('/ID:(\d+)/', $colName, $matches)) {
+                    $componentMap[$index] = $matches[1];
+                }
+                if (stripos($colName, 'NIM') !== false) {
+                    $nimIndex = $index;
+                }
+            }
+        }
+
+        if (empty($componentMap))
+            return response()->json(['error' => 'Tidak ada komponen nilai (ID:xxx) ditemukan.'], 400);
+        if ($nimIndex === -1)
+            return response()->json(['error' => 'Kolom NIM tidak ditemukan.'], 400);
 
         $previewData = [];
         $mahasiswas = $kelasMatakuliah->kelas->mahasiswas->keyBy('nim');
 
-        foreach ($rows as $row) {
-            $nim = isset($row[1]) ? trim($row[1]) : null; // Column B (Index 1) based on template: No, NIM, Nama
+        $dataRows = array_slice($data, $headerRowIndex + 1);
+
+        foreach ($dataRows as $row) {
+            $nim = isset($row[$nimIndex]) ? trim($row[$nimIndex]) : null;
             if (!$nim)
                 continue;
 
@@ -322,19 +617,14 @@ class NilaiController extends Controller
 
             $grades = [];
             foreach ($componentMap as $index => $compId) {
-                // Determine grade value
                 $val = isset($row[$index]) ? $row[$index] : 0;
-                // If cell is empty, default to 0
                 if ($val === null || $val === '')
                     $val = 0;
-
                 $val = is_numeric($val) ? floatval($val) : 0;
-
                 if ($val < 0)
                     $val = 0;
                 if ($val > 100)
                     $val = 100;
-
                 $grades[$compId] = $val;
             }
 
@@ -360,10 +650,12 @@ class NilaiController extends Controller
             'data.*.grades' => 'required|array',
         ]);
 
-        $graderId = Auth::id();
+        $user = Auth::user();
+        $graderId = $user->id;
+        $dosenId = $user->dosen?->id; // Get dosen_id for team teaching
         $prodiId = $kelasMatakuliah->kelas->prodi_id;
-        $skalaNilais = SkalaNilai::forProdi($prodiId)->get();
-
+        $skalaNilais = SkalaNilai::forProdi($prodiId)->orderBy('min_nilai', 'desc')->get();
+        // Load relationships needed for re-calc
         $components = \App\Models\KomponenNilai::where('prodi_id', $prodiId)->where('is_active', true)->get();
         if ($components->isEmpty()) {
             $components = \App\Models\KomponenNilai::whereNull('prodi_id')->where('is_active', true)->get();
@@ -371,37 +663,41 @@ class NilaiController extends Controller
 
         DB::beginTransaction();
         try {
-            // 1. Save Grades
+            // Save imported grades (with dosen_id for team teaching)
             foreach ($validated['data'] as $item) {
                 foreach ($item['grades'] as $compId => $val) {
                     NilaiMahasiswa::updateOrCreate(
                         [
+                            'kelas_matakuliah_id' => $kelasMatakuliah->id,
                             'mahasiswa_id' => $item['mahasiswa_id'],
-                            'kelas_mata_kuliah_id' => $kelasMatakuliah->id,
                             'komponen_nilai_id' => $compId,
+                            'dosen_id' => $dosenId, // Include dosen_id for team teaching
                         ],
                         [
                             'nilai' => $val,
                             'grader_id' => $graderId,
+                            'status' => 'draft',
                         ]
                     );
                 }
             }
 
-            // 2. Recalculate Final Grades for affected students
+            // Recalculate Final Grades (averaging from all dosens)
             foreach ($validated['data'] as $item) {
                 $mhsId = $item['mahasiswa_id'];
-
                 $totalScore = 0;
-                // Fetch updated scores
-                $studentScores = NilaiMahasiswa::where('mahasiswa_id', $mhsId)
+
+                // Fetch ALL scores from ALL dosens for team teaching averaging
+                $allStudentScores = NilaiMahasiswa::where('kelas_matakuliah_id', $kelasMatakuliah->id)
+                    ->where('mahasiswa_id', $mhsId)
                     ->whereIn('komponen_nilai_id', $components->pluck('id'))
                     ->get()
-                    ->keyBy('komponen_nilai_id');
+                    ->groupBy('komponen_nilai_id');
 
                 foreach ($components as $comp) {
-                    $score = isset($studentScores[$comp->id]) ? $studentScores[$comp->id]->nilai : 0;
-                    $totalScore += ($score * $comp->bobot / 100);
+                    $scoresForComponent = $allStudentScores->get($comp->id, collect());
+                    $avgScore = $scoresForComponent->isEmpty() ? 0 : $scoresForComponent->avg('nilai');
+                    $totalScore += ($avgScore * $comp->bobot / 100);
                 }
 
                 $gradeLetter = 'E';
@@ -420,7 +716,6 @@ class NilaiController extends Controller
                     [
                         'nilai_angka' => $totalScore,
                         'nilai_huruf' => $gradeLetter,
-                        // 'nilai_indeks' => ... (omitted for brevity, can happen later)
                     ]
                 );
             }

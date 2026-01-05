@@ -9,11 +9,14 @@ class NilaiMahasiswa extends Model
     protected $table = 'nilai_mahasiswas';
 
     protected $fillable = [
+        'kelas_matakuliah_id',
         'komponen_nilai_id',
         'mahasiswa_id',
         'nilai',
         'grader_id',
+        'dosen_id',
         'feedback',
+        'status',
     ];
 
     protected $casts = [
@@ -33,5 +36,15 @@ class NilaiMahasiswa extends Model
     public function grader()
     {
         return $this->belongsTo(User::class, 'grader_id');
+    }
+
+    public function dosen()
+    {
+        return $this->belongsTo(Dosen::class, 'dosen_id');
+    }
+
+    public function kelasMatakuliah()
+    {
+        return $this->belongsTo(KelasMatakuliah::class, 'kelas_matakuliah_id');
     }
 }
