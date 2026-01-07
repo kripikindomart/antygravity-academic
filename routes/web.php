@@ -400,6 +400,21 @@ Route::middleware('auth')->group(function () {
         // Survey Dashboard (Admin/Kaprodi/Dosen)
         Route::get('/dashboard', [\App\Http\Controllers\SurveyResponseController::class, 'dashboard'])->name('dashboard');
 
+        // Survey Response Detail
+        Route::get('/response/{response}', [\App\Http\Controllers\SurveyResponseController::class, 'show'])->name('response.show');
+
+        // Survey Analytics
+        Route::get('/analytics', [\App\Http\Controllers\SurveyResponseController::class, 'analytics'])->name('analytics');
+
+        // Survey Data/Chart/Matrix Views
+        Route::get('/dashboard/{period}/data', [\App\Http\Controllers\SurveyResponseController::class, 'dataView'])->name('dashboard.data');
+        Route::get('/dashboard/{period}/chart', [\App\Http\Controllers\SurveyResponseController::class, 'chartView'])->name('dashboard.chart');
+        Route::get('/dashboard/{period}/matrix', [\App\Http\Controllers\SurveyResponseController::class, 'matrixView'])->name('dashboard.matrix');
+
+        // Response Delete Actions
+        Route::delete('/response/{response}', [\App\Http\Controllers\SurveyResponseController::class, 'destroy'])->name('response.destroy');
+        Route::post('/responses/bulk-delete', [\App\Http\Controllers\SurveyResponseController::class, 'bulkDestroy'])->name('responses.bulk-destroy');
+
         // API: Dynamic data for survey questions
         Route::get('/api/data/{type}', [\App\Http\Controllers\SurveyDataController::class, 'getOptions'])->name('api.data');
     });

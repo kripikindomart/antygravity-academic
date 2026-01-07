@@ -69,6 +69,11 @@ class SurveyPeriod extends Model
         return $this->hasMany(SurveyTarget::class);
     }
 
+    public function responses(): HasMany
+    {
+        return $this->hasMany(SurveyResponse::class);
+    }
+
     public function isActive(): bool
     {
         $now = now()->toDateString();

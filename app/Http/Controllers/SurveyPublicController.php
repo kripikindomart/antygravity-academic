@@ -104,11 +104,16 @@ class SurveyPublicController extends Controller
                         ];
 
                         if (is_numeric($value)) {
-                            // Rating/Scale
-                            $answerData['rating_value'] = $value;
+                            // Rating/Scale - find the option with matching nilai
+                            $option = \App\Models\SurveyOption::where('survey_question_id', $questionId)
+                                ->where('nilai', $value)
+                                ->first();
+                            if ($option) {
+                                $answerData['survey_option_id'] = $option->id;
+                            }
                         } else {
                             // Text/Essay
-                            $answerData['text_value'] = $value;
+                            $answerData['text_answer'] = $value;
                         }
 
                         SurveyAnswer::create($answerData);

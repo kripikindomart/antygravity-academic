@@ -172,82 +172,365 @@ class SurveyResponseController extends Controller
      */
     public function dashboard(Request $request)
     {
-        $user = Auth::user();
-        $dosenId = $user->dosen?->id;
+        $periods = SurveyPeriod::with('tahunAkademik')
+            ->withCount([
+                'responses' => function ($q) {
+                    $q->whereNotNull('submitted_at');
+                }
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
+        return Inertia::render('Survey/Dashboard', [
+            'periods' => $periods,
+        ]);
+    }
+
+    /**
+     * Show single response with all answers
+     */
+    public function show(SurveyResponse $response)
+    {
+        $response->load(['mahasiswa', 'dosen', 'kelasMatakuliah.mataKuliah', 'period.template.questions.options', 'answers.option']);
+
+        $answersFormatted = $response->answers->map(function ($answer) use ($response) {
+            $question = $response->period->template->questions->firstWhere('id', $answer->survey_question_id);
+            return [
+                'question' => $question?->pertanyaan ?? 'Unknown',
+                'kategori' => $question?->kategori,
+                'tipe' => $question?->tipe,
+                'answer' => $answer->option?->label ?? $answer->text_answer ?? '-',
+                'nilai' => $answer->option?->nilai,
+            ];
+        });
+
+        return Inertia::render('Survey/ResponseDetail', [
+            'response' => [
+                'id' => $response->id,
+                'mahasiswa' => $response->mahasiswa?->nama,
+                'nim' => $response->mahasiswa?->nim,
+                'dosen' => $response->dosen?->nama,
+                'matakuliah' => $response->kelasMatakuliah?->mataKuliah?->nama,
+                'submitted_at' => $response->submitted_at?->format('d/m/Y H:i'),
+            ],
+            'answers' => $answersFormatted,
+        ]);
+    }
+
+    /**
+     * Analytics page with charts and filters
+     */
+    public function analytics(Request $request)
+    {
         $periods = SurveyPeriod::with('tahunAkademik')->orderBy('created_at', 'desc')->get();
         $selectedPeriodId = $request->get('period_id', $periods->first()?->id);
 
-        $stats = ['total_responses' => 0, 'avg_score' => 0];
-        $questionStats = [];
+        $dosenFilter = $request->get('dosen_id');
+        $kelasFilter = $request->get('kelas_id');
+
+        $chartData = [];
+        $dosenList = [];
+        $kelasList = [];
 
         if ($selectedPeriodId) {
             $period = SurveyPeriod::with('template.questions.options')->find($selectedPeriodId);
 
             if ($period) {
-                // Query Responses Directly
                 $query = SurveyResponse::where('survey_period_id', $period->id)
-                    ->whereNotNull('submitted_at');
+                    ->whereNotNull('submitted_at')
+                    ->with(['answers.option', 'dosen', 'kelasMatakuliah.mataKuliah']);
 
-                // Filter by dosen if not admin
-                if ($dosenId && !$user->hasRole(['admin', 'akademik', 'kaprodi'])) {
-                    $query->where('dosen_id', $dosenId);
+                // Apply filters
+                if ($dosenFilter) {
+                    $query->where('dosen_id', $dosenFilter);
+                }
+                if ($kelasFilter) {
+                    $query->where('kelas_matakuliah_id', $kelasFilter);
                 }
 
-                // DEBUG RELATIONSHIPS
                 $responses = $query->get();
 
-                try {
-                    $responses->load('answers.option');
-                } catch (\Exception $e) {
-                    dd("ERROR LOADING ANSWERS: " . $e->getMessage());
-                }
+                // Get unique dosen and kelas for filters
+                $dosenList = $responses->pluck('dosen')->unique()->filter()->values()->map(fn($d) => ['id' => $d->id, 'nama' => $d->nama]);
+                $kelasList = $responses->pluck('kelasMatakuliah')->unique()->filter()->values()->map(fn($k) => ['id' => $k->id, 'nama' => $k->mataKuliah?->nama]);
 
-                try {
-                    $responses->load('kelasMatakuliah.mataKuliah');
-                } catch (\Exception $e) {
-                    dd("ERROR LOADING KELAS/MK: " . $e->getMessage());
-                }
-
-                try {
-                    $responses->load('dosen');
-                } catch (\Exception $e) {
-                    dd("ERROR LOADING DOSEN: " . $e->getMessage());
-                }
-
-                // Calculate aggregated stats
+                // Build chart data per question
                 $allAnswers = $responses->flatMap(fn($r) => $r->answers);
 
                 foreach ($period->template->questions as $question) {
                     if ($question->tipe === 'scale') {
                         $questionAnswers = $allAnswers->where('survey_question_id', $question->id);
-                        $avgScore = $questionAnswers->avg(fn($a) => $a->option?->nilai ?? 0);
 
-                        $questionStats[] = [
+                        $distribution = $question->options->map(fn($opt) => [
+                            'label' => $opt->label,
+                            'nilai' => $opt->nilai,
+                            'count' => $questionAnswers->where('survey_option_id', $opt->id)->count(),
+                        ]);
+
+                        $scaleValues = $questionAnswers->filter(fn($a) => $a->option?->nilai !== null)->map(fn($a) => $a->option->nilai);
+
+                        $chartData[] = [
                             'question' => $question->pertanyaan,
                             'kategori' => $question->kategori,
-                            'avg_score' => round($avgScore, 2),
-                            'total_responses' => $questionAnswers->count(),
-                            'distribution' => $question->options->map(fn($opt) => [
-                                'label' => $opt->label,
-                                'count' => $questionAnswers->where('survey_option_id', $opt->id)->count(),
-                            ]),
+                            'avg' => round($scaleValues->avg() ?? 0, 2),
+                            'total' => $questionAnswers->count(),
+                            'distribution' => $distribution,
+                            'labels' => $distribution->pluck('label'),
+                            'values' => $distribution->pluck('count'),
                         ];
                     }
                 }
-
-                $stats = [
-                    'total_responses' => $responses->count(),
-                    'avg_score' => round($allAnswers->avg(fn($a) => $a->option?->nilai ?? 0), 2),
-                ];
             }
         }
 
-        return Inertia::render('Survey/Dashboard', [
+        return Inertia::render('Survey/Analytics', [
             'periods' => $periods,
             'selectedPeriodId' => $selectedPeriodId,
-            'stats' => $stats,
-            'questionStats' => $questionStats,
+            'chartData' => $chartData,
+            'dosenList' => $dosenList,
+            'kelasList' => $kelasList,
+            'filters' => [
+                'dosen_id' => $dosenFilter,
+                'kelas_id' => $kelasFilter,
+            ],
         ]);
+    }
+
+    /**
+     * Data View - List all responses with answers for a period
+     */
+    public function dataView(Request $request, SurveyPeriod $period)
+    {
+        $query = SurveyResponse::where('survey_period_id', $period->id)
+            ->whereNotNull('submitted_at')
+            ->with(['mahasiswa.prodi', 'dosen', 'kelasMatakuliah.mataKuliah', 'answers.option']);
+
+        // Apply filters
+        if ($request->filled('prodi_id')) {
+            $query->whereHas('mahasiswa', fn($q) => $q->where('prodi_id', $request->prodi_id));
+        }
+        if ($request->filled('kelas_id')) {
+            $query->where('kelas_matakuliah_id', $request->kelas_id);
+        }
+
+        $responses = $query->orderBy('submitted_at', 'desc')->get();
+
+        $respondents = $responses->map(fn($r) => [
+            'id' => $r->id,
+            'mahasiswa' => $r->mahasiswa?->nama ?? 'Unknown',
+            'nim' => $r->mahasiswa?->nim ?? '-',
+            'prodi' => $r->mahasiswa?->prodi?->nama ?? '-',
+            'dosen' => $r->dosen?->nama ?? 'Unknown',
+            'kelas' => $r->kelasMatakuliah?->mataKuliah?->nama ?? '-',
+            'kelas_id' => $r->kelas_matakuliah_id,
+            'submitted_at' => $r->submitted_at?->format('d/m/Y H:i'),
+            'answer_count' => $r->answers->count(),
+        ]);
+
+        // Get filter options from all responses in this period
+        $allResponses = SurveyResponse::where('survey_period_id', $period->id)
+            ->whereNotNull('submitted_at')
+            ->with(['mahasiswa.prodi', 'kelasMatakuliah.mataKuliah'])
+            ->get();
+
+        $prodiList = $allResponses->pluck('mahasiswa.prodi')->filter()->unique('id')->values();
+        $kelasList = $allResponses->pluck('kelasMatakuliah')->filter()->unique('id')->map(fn($k) => [
+            'id' => $k->id,
+            'nama' => $k->mataKuliah?->nama ?? 'Kelas ' . $k->id,
+        ])->values();
+
+        return Inertia::render('Survey/DataView', [
+            'period' => $period,
+            'respondents' => $respondents,
+            'prodiList' => $prodiList,
+            'kelasList' => $kelasList,
+            'filters' => [
+                'prodi_id' => $request->prodi_id,
+                'kelas_id' => $request->kelas_id,
+            ],
+        ]);
+    }
+
+    /**
+     * Chart View - Visualize responses with bar charts
+     */
+    public function chartView(Request $request, SurveyPeriod $period)
+    {
+        $period->load('template.questions.options');
+
+        $query = SurveyResponse::where('survey_period_id', $period->id)
+            ->whereNotNull('submitted_at')
+            ->with(['mahasiswa.prodi', 'kelasMatakuliah', 'answers.option']);
+
+        // Apply filters
+        if ($request->filled('prodi_id')) {
+            $query->whereHas('mahasiswa', fn($q) => $q->where('prodi_id', $request->prodi_id));
+        }
+        if ($request->filled('kelas_id')) {
+            $query->where('kelas_matakuliah_id', $request->kelas_id);
+        }
+
+        $responses = $query->get();
+        $allAnswers = $responses->flatMap(fn($r) => $r->answers);
+
+        $chartData = [];
+        if ($period->template) {
+            foreach ($period->template->questions as $question) {
+                if ($question->tipe === 'scale') {
+                    $questionAnswers = $allAnswers->where('survey_question_id', $question->id);
+                    $scaleValues = $questionAnswers->filter(fn($a) => $a->option?->nilai !== null)->map(fn($a) => $a->option->nilai);
+
+                    $chartData[] = [
+                        'question' => $question->pertanyaan,
+                        'kategori' => $question->kategori,
+                        'avg' => round($scaleValues->avg() ?? 0, 2),
+                        'total' => $questionAnswers->count(),
+                        'distribution' => $question->options->map(fn($opt) => [
+                            'label' => $opt->label,
+                            'nilai' => $opt->nilai,
+                            'count' => $questionAnswers->where('survey_option_id', $opt->id)->count(),
+                        ]),
+                    ];
+                }
+            }
+        }
+
+        // Get filter options
+        $allResponses = SurveyResponse::where('survey_period_id', $period->id)
+            ->whereNotNull('submitted_at')
+            ->with(['mahasiswa.prodi', 'kelasMatakuliah.mataKuliah'])
+            ->get();
+
+        $prodiList = $allResponses->pluck('mahasiswa.prodi')->filter()->unique('id')->values();
+        $kelasList = $allResponses->pluck('kelasMatakuliah')->filter()->unique('id')->map(fn($k) => [
+            'id' => $k->id,
+            'nama' => $k->mataKuliah?->nama ?? 'Kelas ' . $k->id,
+        ])->values();
+
+        return Inertia::render('Survey/ChartView', [
+            'period' => $period,
+            'chartData' => $chartData,
+            'totalResponses' => $responses->count(),
+            'prodiList' => $prodiList,
+            'kelasList' => $kelasList,
+            'filters' => [
+                'prodi_id' => $request->prodi_id,
+                'kelas_id' => $request->kelas_id,
+            ],
+        ]);
+    }
+
+    /**
+     * Matrix View - Cross tabulation of Dosen x Questions
+     */
+    public function matrixView(Request $request, SurveyPeriod $period)
+    {
+        $period->load('template.questions');
+
+        $query = SurveyResponse::where('survey_period_id', $period->id)
+            ->whereNotNull('submitted_at')
+            ->with(['mahasiswa.prodi', 'kelasMatakuliah', 'dosen', 'answers.option']);
+
+        // Apply filters
+        if ($request->filled('prodi_id')) {
+            $query->whereHas('mahasiswa', fn($q) => $q->where('prodi_id', $request->prodi_id));
+        }
+        if ($request->filled('kelas_id')) {
+            $query->where('kelas_matakuliah_id', $request->kelas_id);
+        }
+
+        $responses = $query->get();
+
+        // Get unique dosens
+        $dosenList = $responses->pluck('dosen')->unique('id')->filter()->values();
+
+        // Build matrix: rows = dosen, cols = questions
+        $matrix = [];
+        foreach ($dosenList as $dosen) {
+            $dosenResponses = $responses->where('dosen_id', $dosen->id);
+            $allAnswers = $dosenResponses->flatMap(fn($r) => $r->answers);
+
+            $row = [
+                'dosen' => $dosen->nama,
+                'total_responses' => $dosenResponses->count(),
+                'scores' => [],
+            ];
+
+            if ($period->template) {
+                foreach ($period->template->questions as $question) {
+                    if ($question->tipe === 'scale') {
+                        $questionAnswers = $allAnswers->where('survey_question_id', $question->id);
+                        $scaleValues = $questionAnswers->filter(fn($a) => $a->option?->nilai !== null)->map(fn($a) => $a->option->nilai);
+                        $row['scores'][$question->id] = round($scaleValues->avg() ?? 0, 2);
+                    }
+                }
+            }
+
+            $matrix[] = $row;
+        }
+
+        $questions = $period->template?->questions->where('tipe', 'scale')->map(fn($q) => [
+            'id' => $q->id,
+            'pertanyaan' => $q->pertanyaan,
+            'kategori' => $q->kategori,
+        ]) ?? collect();
+
+        // Get filter options
+        $allResponses = SurveyResponse::where('survey_period_id', $period->id)
+            ->whereNotNull('submitted_at')
+            ->with(['mahasiswa.prodi', 'kelasMatakuliah.mataKuliah'])
+            ->get();
+
+        $prodiList = $allResponses->pluck('mahasiswa.prodi')->filter()->unique('id')->values();
+        $kelasList = $allResponses->pluck('kelasMatakuliah')->filter()->unique('id')->map(fn($k) => [
+            'id' => $k->id,
+            'nama' => $k->mataKuliah?->nama ?? 'Kelas ' . $k->id,
+        ])->values();
+
+        return Inertia::render('Survey/MatrixView', [
+            'period' => $period,
+            'matrix' => $matrix,
+            'questions' => $questions,
+            'prodiList' => $prodiList,
+            'kelasList' => $kelasList,
+            'filters' => [
+                'prodi_id' => $request->prodi_id,
+                'kelas_id' => $request->kelas_id,
+            ],
+        ]);
+    }
+
+    /**
+     * Delete a single response
+     */
+    public function destroy(SurveyResponse $response)
+    {
+        $periodId = $response->survey_period_id;
+        $response->answers()->delete();
+        $response->delete();
+
+        return redirect()->route('survey.dashboard.data', $periodId)
+            ->with('success', 'Response berhasil dihapus');
+    }
+
+    /**
+     * Bulk delete responses
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $ids = $request->input('ids', []);
+
+        if (empty($ids)) {
+            return back()->with('error', 'Tidak ada data yang dipilih');
+        }
+
+        $first = SurveyResponse::find($ids[0]);
+        $periodId = $first?->survey_period_id;
+
+        SurveyAnswer::whereIn('survey_response_id', $ids)->delete();
+        SurveyResponse::whereIn('id', $ids)->delete();
+
+        return redirect()->route('survey.dashboard.data', $periodId)
+            ->with('success', count($ids) . ' response berhasil dihapus');
     }
 }
