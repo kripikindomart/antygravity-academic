@@ -361,4 +361,62 @@ Route::middleware('auth')->group(function () {
         Route::post('/import', [\App\Http\Controllers\NilaiController::class, 'importStore'])->name('import-store');
     });
 
+    // ============================================
+    // Survey / EDOM Module
+    // ============================================
+    Route::prefix('survey')->name('survey.')->group(function () {
+        // Survey Templates (Admin)
+        Route::prefix('templates')->name('templates.')->middleware('permission:survey.manage')->group(function () {
+            Route::get('/', [\App\Http\Controllers\SurveyTemplateController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\SurveyTemplateController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\SurveyTemplateController::class, 'store'])->name('store');
+            Route::get('/{template}', [\App\Http\Controllers\SurveyTemplateController::class, 'show'])->name('show');
+            Route::get('/{template}/edit', [\App\Http\Controllers\SurveyTemplateController::class, 'edit'])->name('edit');
+            Route::put('/{template}', [\App\Http\Controllers\SurveyTemplateController::class, 'update'])->name('update');
+            Route::delete('/{template}', [\App\Http\Controllers\SurveyTemplateController::class, 'destroy'])->name('destroy');
+            Route::post('/{template}/duplicate', [\App\Http\Controllers\SurveyTemplateController::class, 'duplicate'])->name('duplicate');
+        });
+
+        // Survey Periods (Admin)
+        Route::prefix('periods')->name('periods.')->middleware('permission:survey.manage')->group(function () {
+            Route::get('/', [\App\Http\Controllers\SurveyPeriodController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\SurveyPeriodController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\SurveyPeriodController::class, 'store'])->name('store');
+            Route::get('/{period}', [\App\Http\Controllers\SurveyPeriodController::class, 'show'])->name('show');
+            Route::get('/{period}/edit', [\App\Http\Controllers\SurveyPeriodController::class, 'edit'])->name('edit');
+            Route::put('/{period}', [\App\Http\Controllers\SurveyPeriodController::class, 'update'])->name('update');
+            Route::delete('/{period}', [\App\Http\Controllers\SurveyPeriodController::class, 'destroy'])->name('destroy');
+            Route::post('/{period}/activate', [\App\Http\Controllers\SurveyPeriodController::class, 'activate'])->name('activate');
+            Route::post('/{period}/close', [\App\Http\Controllers\SurveyPeriodController::class, 'close'])->name('close');
+        });
+
+        // Survey Responses (Mahasiswa)
+        Route::prefix('responses')->name('responses.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\SurveyResponseController::class, 'index'])->name('index');
+            Route::get('/{target}/fill', [\App\Http\Controllers\SurveyResponseController::class, 'create'])->name('create');
+            Route::post('/{target}', [\App\Http\Controllers\SurveyResponseController::class, 'store'])->name('store');
+        });
+
+        // Survey Dashboard (Admin/Kaprodi/Dosen)
+        Route::get('/dashboard', [\App\Http\Controllers\SurveyResponseController::class, 'dashboard'])->name('dashboard');
+
+        // API: Dynamic data for survey questions
+        Route::get('/api/data/{type}', [\App\Http\Controllers\SurveyDataController::class, 'getOptions'])->name('api.data');
+    });
+
 });
+
+// ============================================
+// Public Survey Routes (Guest Access)
+// ============================================
+Route::prefix('survey/s')->name('survey.public.')->group(function () {
+    Route::get('/{period:slug}', [\App\Http\Controllers\SurveyPublicController::class, 'show'])->name('show');
+    Route::post('/{period:slug}', [\App\Http\Controllers\SurveyPublicController::class, 'store'])->name('store');
+    // API for nested selection: Prodi → Kelas → MataKuliah → Mahasiswa → Dosen
+    Route::get('/{period:slug}/kelas', [\App\Http\Controllers\SurveyPublicController::class, 'getKelasList'])->name('kelas');
+    Route::get('/{period:slug}/matakuliah-by-kelas', [\App\Http\Controllers\SurveyPublicController::class, 'getMatakuliahByKelas'])->name('matakuliah_by_kelas');
+    Route::get('/{period:slug}/mahasiswa', [\App\Http\Controllers\SurveyPublicController::class, 'getMahasiswa'])->name('mahasiswa');
+    Route::get('/{period:slug}/dosen', [\App\Http\Controllers\SurveyPublicController::class, 'getDosenByKelas'])->name('dosen');
+});
+
+
